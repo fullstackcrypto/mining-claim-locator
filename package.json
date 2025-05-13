@@ -1,0 +1,12 @@
+{
+  "name": "mining-claim-locator",
+  "version": "1.0.0",
+  "description": "Application to locate expired mining claims in Arizona",
+  "scripts": {
+    "start:backend": "cd backend && node server.js",
+    "start:frontend": "cd frontend && npm start",
+    "setup:db": "sudo -u postgres psql -c 'CREATE DATABASE mining_claims;' && sudo -u postgres psql -d mining_claims -f scripts/setup_database.sql",
+    "fetch:data": "cd scripts && source venv/bin/activate && python blm_fetcher.py",
+    "dev": "concurrently \"npm run start:backend\" \"npm run start:frontend\""
+  }
+}
