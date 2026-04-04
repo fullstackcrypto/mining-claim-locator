@@ -1,16 +1,1 @@
-# Jekyll configuration file
-
-baseurl: "" # the base url for your site, e.g. /~username/repo
-url: "http://example.com" # the URL of your site
-
-# See https://jekyllrb.com/docs/configuration/
-
-# Build settings
-include:
-  - "_layouts"
-  - "_includes"
-
-# Plugins
-plugins:
-  - jekyll-feed
-  - jekyll-seo-tag
+theme: jekyll-theme-cayman
