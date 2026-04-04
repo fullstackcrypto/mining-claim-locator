@@ -1,0 +1,113 @@
+/* frontend/src/styles/SearchPanel.css */
+.search-panel {
+  background-color: #fff;
+  border-radius: 4px;
+  padding: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  width: 100%;
+}
+
+.search-panel h2 {
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+  color: var(--primary-color, #2c3e50);
+}
+
+.form-group {
+  margin-bottom: 0.75rem;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  color: #555;
+}
+
+.form-group select,
+.form-group input {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.toggle-advanced {
+  background: none;
+  border: none;
+  color: var(--primary-color, #2c3e50);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0;
+  text-decoration: underline;
+  margin-bottom: 0.75rem;
+}
+
+.advanced-options {
+  padding: 0.75rem;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+  margin-bottom: 0.75rem;
+}
+
+.form-hint {
+  font-size: 0.8rem;
+  color: #777;
+  margin-top: 0.5rem;
+}
+
+.button-group {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.search-button {
+  flex: 1;
+  padding: 0.5rem;
+  background-color: var(--secondary-color, #e67e22);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.search-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.reset-button {
+  padding: 0.5rem 1rem;
+  background-color: #95a5a6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.reset-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.search-help {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+}
+
+.search-help summary {
+  cursor: pointer;
+  color: var(--primary-color, #2c3e50);
+}
+
+.search-help ul {
+  margin-top: 0.5rem;
+  padding-left: 1.25rem;
+  color: #555;
+  line-height: 1.8;
+}
