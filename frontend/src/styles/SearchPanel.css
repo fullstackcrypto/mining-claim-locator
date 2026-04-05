@@ -118,3 +118,9 @@
   line-height: 1.8;
   color: #555;
 }
+
+.counties-error {
+  font-size: 0.78rem;
+  color: var(--error-color);
+  margin: 0.25rem 0 0.5rem;
+}
