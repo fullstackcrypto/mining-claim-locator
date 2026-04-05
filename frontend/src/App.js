@@ -1,69 +1,62 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { useState, useCallback } from 'react';
+import SearchPanel from './components/SearchPanel';
+import MapView from './components/MapView';
+import api from './services/api';
+import './styles/App.css';
 
 function App() {
   const [claims, setClaims] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [searched, setSearched] = useState(false);
 
-  useEffect(() => {
-    // Initialize map
-    const map = new window.google.maps.Map(document.getElementById('map'), {
-      center: { lat: 34.0489, lng: -111.0937 }, // Arizona
-      zoom: 7,
-      mapTypeId: 'terrain'
-    });
-    
-    // Load sample data
-    axios.get('http://localhost:3000/api/claims/search')
-      .then(response => {
-        setClaims(response.data);
-        setLoading(false);
-        
-        // Add markers
-        response.data.forEach(claim => {
-          const marker = new window.google.maps.Marker({
-            position: { lat: claim.latitude, lng: claim.longitude },
-            map,
-            title: claim.claim_name
-          });
-          
-          const infoWindow = new window.google.maps.InfoWindow({
-            content: `
-              <div>
-                <strong>${claim.claim_name}</strong><br>
-                BLM Case: ${claim.blm_case_id}<br>
-                Type: ${claim.claim_type}<br>
-                Location: ${claim.township} ${claim.range} Sec ${claim.section}<br>
-              </div>
-            `
-          });
-          
-          marker.addListener('click', () => {
-            infoWindow.open(map, marker);
-          });
-        });
-      })
-      .catch(error => {
-        console.error('Error fetching claims:', error);
-        setLoading(false);
-      });
+  const handleSearch = useCallback(async (params) => {
+    setLoading(true);
+    setError(null);
+    setSearched(true);
+
+    try {
+      const response = await api.searchClaims(params);
+      setClaims(response.data);
+    } catch (err) {
+      console.error('Search failed:', err);
+      setError('Failed to load claims. Please try again.');
+      setClaims([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   return (
-    <div className="App">
-      <header style={{ backgroundColor: '#2c3e50', color: 'white', padding: '1rem' }}>
-        <h1>Mining Claim Locator</h1>
+    <div className="app">
+      <header className="app-header">
+        <div className="app-title">
+          <span role="img" aria-label="pickaxe">⛏️</span>
+          <h1>Mining Claim Locator</h1>
+        </div>
+        <span className="app-subtitle">Arizona BLM Expired &amp; Abandoned Claims</span>
       </header>
-      <main>
-        <div id="map" style={{ height: '600px', width: '100%' }}></div>
-        {loading ? (
-          <p>Loading claims...</p>
-        ) : (
-          <div style={{ padding: '1rem' }}>
-            <h2>Claims Found: {claims.length}</h2>
-          </div>
-        )}
+
+      <main className="app-content">
+        <SearchPanel onSearch={handleSearch} loading={loading} />
+
+        <div className="map-area">
+          {!searched && !loading && (
+            <div className="empty-state">
+              <p>Use the search panel to find expired mining claims.</p>
+            </div>
+          )}
+          {(searched || loading) && (
+            <MapView claims={claims} loading={loading} error={error} />
+          )}
+        </div>
       </main>
+
+      <footer className="app-footer">
+        <p>
+          Data sourced from BLM LR2000 / MLRS records. For research purposes only.
+        </p>
+      </footer>
     </div>
   );
 }
