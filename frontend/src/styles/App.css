@@ -107,3 +107,25 @@ select:focus {
     --border-color: CanvasText;
   }
 }
+
+.app-subtitle {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.map-area {
+  flex: 1;
+  min-height: 400px;
+}
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 400px;
+  background: #fff;
+  border: 2px dashed var(--border-color);
+  border-radius: 4px;
+  color: #666;
+  font-size: 1rem;
+}

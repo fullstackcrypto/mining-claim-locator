@@ -1,9 +1,6 @@
-const express = require('express');
-const router = express.Router();
-
-// Sample data – used when no database is configured.
-// Real deployments should replace this with database queries (see setup_database.sql).
-const SAMPLE_CLAIMS = [
+// Sample BLM mining claim records embedded from backend/routes/claims.js.
+// No backend server is required — all filtering is performed in the browser.
+const CLAIMS = [
   {
     id: 1,
     blm_case_id: 'AZMC123456',
@@ -19,7 +16,7 @@ const SAMPLE_CLAIMS = [
     section: '14',
     meridian: 'GILA & SALT RIVER',
     latitude: 33.4484,
-    longitude: -112.0740,
+    longitude: -112.074,
     acreage: 20.5,
     commodity: 'GOLD, SILVER',
     maintenance_fee_paid: false,
@@ -40,7 +37,7 @@ const SAMPLE_CLAIMS = [
     section: '28',
     meridian: 'GILA & SALT RIVER',
     latitude: 32.1234,
-    longitude: -111.7890,
+    longitude: -111.789,
     acreage: 40.0,
     commodity: 'GOLD',
     maintenance_fee_paid: false,
@@ -60,7 +57,7 @@ const SAMPLE_CLAIMS = [
     range: 'R4W',
     section: '7',
     meridian: 'GILA & SALT RIVER',
-    latitude: 34.5400,
+    latitude: 34.54,
     longitude: -112.4685,
     acreage: 20.0,
     commodity: 'SILVER, LEAD',
@@ -111,85 +108,4 @@ const SAMPLE_CLAIMS = [
   }
 ];
 
-/**
- * Search claims with optional filters.
- * Query parameters: county, township, range, section, claim_type,
- *                   case_disposition, date_from, date_to, claimant
- */
-router.get('/search', (req, res) => {
-  try {
-    const {
-      county,
-      township,
-      range,
-      section,
-      claim_type,
-      case_disposition,
-      date_from,
-      date_to,
-      claimant
-    } = req.query;
-
-    let results = SAMPLE_CLAIMS.slice();
-
-    if (county) {
-      results = results.filter(c => c.county === county.toUpperCase());
-    }
-    if (township) {
-      results = results.filter(c =>
-        c.township.toUpperCase().includes(township.toUpperCase())
-      );
-    }
-    if (range) {
-      results = results.filter(c =>
-        c.range.toUpperCase().includes(range.toUpperCase())
-      );
-    }
-    if (section) {
-      results = results.filter(c => c.section === section);
-    }
-    if (claim_type) {
-      results = results.filter(c => c.claim_type === claim_type.toUpperCase());
-    }
-    if (case_disposition) {
-      results = results.filter(
-        c => c.case_disposition === case_disposition.toUpperCase()
-      );
-    }
-    if (date_from) {
-      results = results.filter(c => c.close_date >= date_from);
-    }
-    if (date_to) {
-      results = results.filter(c => c.close_date <= date_to);
-    }
-    if (claimant) {
-      results = results.filter(c =>
-        c.claimant_name.toUpperCase().includes(claimant.toUpperCase())
-      );
-    }
-
-    res.json(results);
-  } catch (error) {
-    console.error('Search error:', error);
-    res.status(500).json({ error: 'Search failed' });
-  }
-});
-
-/**
- * Get a single claim by id.
- */
-router.get('/:id', (req, res) => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    const claim = SAMPLE_CLAIMS.find(c => c.id === id);
-    if (!claim) {
-      return res.status(404).json({ error: 'Claim not found' });
-    }
-    res.json(claim);
-  } catch (error) {
-    console.error('Error fetching claim:', error);
-    res.status(500).json({ error: 'Request failed' });
-  }
-});
-
-module.exports = router;
+export default CLAIMS;

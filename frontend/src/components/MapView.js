@@ -1,114 +1,107 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useRef, useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
 import '../styles/MapView.css';
 
-const MapView = ({ claims, loading, error }) => {
-  const mapRef = useRef(null);
-  const markersRef = useRef([]);
-  const navigate = useNavigate();
-  const [map, setMap] = useState(null);
+// Fix Leaflet default marker icon path issue with Webpack
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png'
+});
 
-  // Initialize Google Maps
+/** Adjusts the map view to fit all visible markers. */
+function FitBounds({ claims }) {
+  const map = useMap();
+
   useEffect(() => {
-    if (!map && mapRef.current) {
-      const googleMap = new window.google.maps.Map(mapRef.current, {
-        center: { lat: 34.0489, lng: -111.0937 }, // Arizona
-        zoom: 7,
-        mapTypeId: 'terrain',
-        mapTypeControl: true,
-        mapTypeControlOptions: {
-          style: window.google.maps.MapTypeControlStyle.DROPDOWN_MENU,
-          mapTypeIds: ['roadmap', 'terrain', 'satellite', 'hybrid']
-        }
-      });
-      
-      setMap(googleMap);
-    }
-  }, [map]);
+    if (!claims || claims.length === 0) return;
 
-  // Update markers when claims change
-  useEffect(() => {
-    if (map && claims && claims.length > 0) {
-      updateMarkers();
-    }
-  }, [map, claims]);
+    const coords = claims
+      .filter(c => c.latitude && c.longitude)
+      .map(c => [parseFloat(c.latitude), parseFloat(c.longitude)]);
 
-  const updateMarkers = () => {
-    // Clear existing markers
-    markersRef.current.forEach(marker => marker.setMap(null));
-    markersRef.current = [];
-    
-    if (!map || !claims) return;
-    
-    // Add markers for each claim
-    claims.forEach(claim => {
-      try {
-        // Extract coordinates from geometry
-        let coords;
-        if (claim.geometry && typeof claim.geometry === 'object') {
-          coords = {
-            lat: claim.geometry.coordinates[1],
-            lng: claim.geometry.coordinates[0]
-          };
-        } else if (claim.latitude && claim.longitude) {
-          coords = {
-            lat: parseFloat(claim.latitude),
-            lng: parseFloat(claim.longitude)
-          };
-        }
-        
-        if (coords) {
-          const marker = new window.google.maps.Marker({
-            position: coords,
-            map,
-            title: claim.claim_name || `Claim ${claim.claim_id}`,
-            icon: {
-              url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
-            }
-          });
-          
-          // Add info window
-          const infoWindow = new window.google.maps.InfoWindow({
-            content: `
-              <div>
-                <strong>Claim ID:</strong> ${claim.claim_id}<br>
-                <strong>Type:</strong> ${claim.claim_type || 'Unknown'}<br>
-                <strong>Claimant:</strong> ${claim.claimant || 'Unknown'}<br>
-                <strong>Expired:</strong> ${new Date(claim.expiration_date).toLocaleDateString() || 'Unknown'}<br>
-                <strong>Location:</strong> ${claim.township || ''} ${claim.range || ''} Sec ${claim.section || ''}<br>
-                <a href="#/claim/${claim.claim_id}">View Details</a>
-              </div>
-            `
-          });
-          
-          marker.addListener('click', () => {
-            infoWindow.open(map, marker);
-          });
-          
-          markersRef.current.push(marker);
-        }
-      } catch (err) {
-        console.error('Error creating marker for claim:', claim.claim_id, err);
-      }
-    });
+    if (coords.length > 0) {
+      map.fitBounds(coords, { padding: [40, 40], maxZoom: 10 });
+    }
+  }, [claims, map]);
+
+  return null;
+}
+
+const MapView = ({ claims = [], loading, error }) => {
+  const arizonaCenter = [34.0489, -111.0937];
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return 'Unknown';
+    try {
+      return new Date(dateStr).toLocaleDateString();
+    } catch {
+      return dateStr;
+    }
   };
 
   return (
     <div className="map-container">
-      {error && <div className="map-error">{error}</div>}
-      {loading && <div className="map-loading">Loading claims...</div>}
-      
-      <div 
-        ref={mapRef} 
+      {error && (
+        <div className="map-error" role="alert">
+          {error}
+        </div>
+      )}
+      {loading && (
+        <div className="map-loading" aria-live="polite">
+          Loading claims…
+        </div>
+      )}
+
+      <MapContainer
+        center={arizonaCenter}
+        zoom={7}
         className="map-view"
-        style={{ width: '100%', height: '600px' }}
-      ></div>
-      
-      <div className="map-stats">
-        {claims && (
-          <div className="claims-count">
-            Showing {claims.length} expired mining claims
-          </div>
+        aria-label="Map of Arizona mining claims"
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+
+        {claims.map(claim => {
+          const lat = parseFloat(claim.latitude);
+          const lng = parseFloat(claim.longitude);
+          if (isNaN(lat) || isNaN(lng)) return null;
+
+          return (
+            <Marker key={claim.id} position={[lat, lng]}>
+              <Popup>
+                <div className="map-popup">
+                  <strong>{claim.claim_name}</strong>
+                  <br />
+                  <span>BLM Case: {claim.blm_case_id}</span>
+                  <br />
+                  <span>Type: {claim.claim_type}</span>
+                  <br />
+                  <span>Status: {claim.case_disposition}</span>
+                  <br />
+                  <span>Claimant: {claim.claimant_name}</span>
+                  <br />
+                  <span>
+                    Location: {claim.township} {claim.range} Sec {claim.section}
+                  </span>
+                  <br />
+                  <span>Closed: {formatDate(claim.close_date)}</span>
+                </div>
+              </Popup>
+            </Marker>
+          );
+        })}
+
+        <FitBounds claims={claims} />
+      </MapContainer>
+
+      <div className="map-stats" aria-live="polite">
+        {!loading && (
+          <span>Showing {claims.length} expired mining claim{claims.length !== 1 ? 's' : ''}</span>
         )}
       </div>
     </div>
