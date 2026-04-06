@@ -1,0 +1,20 @@
+# Render.com deployment configuration for the Mining Claim Locator backend
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: mining-claim-locator-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: ALLOWED_ORIGINS
+        sync: false  # Set this in the Render dashboard to your GitHub Pages URL
+      - key: DATABASE_URL
+        sync: false  # Optional: set if using a PostgreSQL database
+    autoDeploy: true
