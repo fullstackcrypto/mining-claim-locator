@@ -1,12 +1,32 @@
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+// If REACT_APP_API_URL is not set or empty, API calls are disabled
+// and the app will use embedded sample data instead.
+const API_URL = process.env.REACT_APP_API_URL || null;
 
 const api = {
-  checkHealth: () => axios.get(`${API_URL}/health`),
-  searchClaims: (params = {}) => axios.get(`${API_URL}/claims/search`, { params }),
-  getClaimDetails: (id) => axios.get(`${API_URL}/claims/${id}`),
-  getCounties: () => axios.get(`${API_URL}/counties`)
+  /** Returns true if a backend API is configured */
+  isConfigured: () => Boolean(API_URL),
+  
+  checkHealth: () => {
+    if (!API_URL) return Promise.reject(new Error('API not configured'));
+    return axios.get(`${API_URL}/health`);
+  },
+  
+  searchClaims: (params = {}) => {
+    if (!API_URL) return Promise.reject(new Error('API not configured'));
+    return axios.get(`${API_URL}/claims/search`, { params });
+  },
+  
+  getClaimDetails: (id) => {
+    if (!API_URL) return Promise.reject(new Error('API not configured'));
+    return axios.get(`${API_URL}/claims/${id}`);
+  },
+  
+  getCounties: () => {
+    if (!API_URL) return Promise.reject(new Error('API not configured'));
+    return axios.get(`${API_URL}/counties`);
+  }
 };
 
 export default api;

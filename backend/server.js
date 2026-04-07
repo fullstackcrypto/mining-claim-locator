@@ -7,8 +7,11 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',')
+const configuredOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean)
+  : [];
+const allowedOrigins = configuredOrigins.length > 0
+  ? configuredOrigins
   : ['http://localhost:3000', 'http://localhost:3001'];
 
 app.use(cors({
@@ -35,6 +38,11 @@ app.get('/api/counties', (req, res) => {
 const claimsRouter = require('./routes/claims');
 app.use('/api/claims', claimsRouter);
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// Only start server when run directly (not when imported for testing)
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+
+module.exports = app;

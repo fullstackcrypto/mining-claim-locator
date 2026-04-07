@@ -5,9 +5,27 @@ An application for locating expired and abandoned mining claims in Arizona using
 ## Features
 - Search BLM mining claims by location, status, and other parameters
 - Interactive map visualization of claim locations using Google Maps
+- **Rich claim details panel** with tabs for overview, history, documents, and images
 - Compatible with MLRS and LR2000 data formats
 - Works with Google Maps and USGS elevation data
 - Falls back to a built-in sample dataset when the API or map is unavailable
+- Responsive design: side panel on desktop, full-screen modal on mobile
+
+## Data Sources & Verification
+
+### Sample Data (Default)
+When no backend API is configured, the app displays **sample/demonstration data**. This data:
+- Is clearly labeled with a ⚠ warning indicator
+- Is NOT sourced from any official BLM records
+- Is intended only for demonstration purposes
+- Should NOT be used for legal or business decisions
+
+### Verified Data (With API)
+When connected to a backend with real BLM data:
+- Data is sourced from BLM MLRS and LR2000 systems
+- Source links point to official BLM records where available
+- Documents and images are retrieved from verified sources
+- The `is_sample_data` flag will be `false` for verified records
 
 ## Deploying from GitHub (recommended)
 
@@ -39,7 +57,7 @@ restrict it to your GitHub Pages domain (`<user>.github.io`) for security.
 # Backend (runs on http://localhost:3000)
 cd backend && npm install && node server.js
 
-# Frontend (runs on http://localhost:3001)
+# Frontend (runs on http://localhost:3000 by default, or 3001 if 3000 is in use)
 cd frontend && npm install && npm start
 ```
 

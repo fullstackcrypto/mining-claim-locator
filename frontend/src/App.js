@@ -1,7 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import api from './services/api';
 import './styles/App.css';
 
+/**
+ * SAMPLE DATA — Mock/example data for demonstration.
+ * This data is NOT sourced from BLM or any verified record system.
+ * When a backend API is configured, real data will replace this.
+ */
 const SAMPLE_CLAIMS = [
   {
     id: 1,
@@ -16,8 +21,28 @@ const SAMPLE_CLAIMS = [
     township: 'T5N',
     range: 'R3E',
     section: '14',
+    meridian: 'GILA & SALT RIVER',
     latitude: 33.4484,
-    longitude: -112.0740
+    longitude: -112.0740,
+    acreage: 20.5,
+    commodity: 'GOLD, SILVER',
+    maintenance_fee_paid: false,
+    notes: 'Claim closed due to failure to pay maintenance fees',
+    history: [
+      { date: '1995-06-12', event: 'Claim located' },
+      { date: '1996-09-01', event: 'Annual maintenance fee paid' },
+      { date: '2009-09-01', event: 'Final maintenance fee paid' },
+      { date: '2010-09-01', event: 'Claim closed - fees not paid' }
+    ],
+    documents: [
+      { name: 'Location Notice', type: 'PDF', url: null },
+      { name: 'Proof of Labor 1996', type: 'PDF', url: null }
+    ],
+    images: [],
+    source_links: [
+      { name: 'BLM LR2000 Record', url: 'https://reports.blm.gov/reports.cfm?application=LR2000' }
+    ],
+    is_sample_data: true
   },
   {
     id: 2,
@@ -32,33 +57,579 @@ const SAMPLE_CLAIMS = [
     township: 'T15S',
     range: 'R12E',
     section: '28',
+    meridian: 'GILA & SALT RIVER',
     latitude: 32.1234,
-    longitude: -111.7890
+    longitude: -111.7890,
+    acreage: 40.0,
+    commodity: 'GOLD',
+    maintenance_fee_paid: false,
+    notes: 'Claim abandoned by claimant',
+    history: [
+      { date: '2002-03-22', event: 'Claim located' },
+      { date: '2015-07-15', event: 'Claim abandoned' }
+    ],
+    documents: [],
+    images: [],
+    source_links: [],
+    is_sample_data: true
+  },
+  {
+    id: 3,
+    blm_case_id: 'AZMC345678',
+    claim_name: 'COPPER RIDGE',
+    claim_type: 'LODE',
+    claimant_name: 'WESTERN COPPER INC',
+    case_disposition: 'VOID',
+    location_date: '1988-11-05',
+    close_date: '1999-12-31',
+    county: 'YAVAPAI',
+    township: 'T12N',
+    range: 'R1W',
+    section: '7',
+    meridian: 'GILA & SALT RIVER',
+    latitude: 34.5678,
+    longitude: -112.4567,
+    acreage: 20.0,
+    commodity: 'COPPER',
+    maintenance_fee_paid: false,
+    notes: 'Claim voided due to defective location',
+    history: [
+      { date: '1988-11-05', event: 'Claim located' },
+      { date: '1999-12-31', event: 'Claim voided' }
+    ],
+    documents: [
+      { name: 'Original Location Notice', type: 'PDF', url: null }
+    ],
+    images: [
+      { name: 'Site Photo 1989', url: null, thumbnail: null }
+    ],
+    source_links: [
+      { name: 'BLM LR2000 Record', url: 'https://reports.blm.gov/reports.cfm?application=LR2000' }
+    ],
+    is_sample_data: true
   }
 ];
+
+// Helper to create safe DOM element for InfoWindow
+function createInfoContent(claim, onViewDetails) {
+  const container = document.createElement('div');
+  container.style.cssText = 'min-width: 200px; font-family: inherit;';
+  
+  const title = document.createElement('strong');
+  title.textContent = claim.claim_name;
+  container.appendChild(title);
+  container.appendChild(document.createElement('br'));
+  
+  const status = document.createElement('span');
+  status.style.cssText = 'display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 11px; margin: 4px 0;';
+  status.style.backgroundColor = claim.case_disposition === 'CLOSED' ? '#e74c3c' : 
+                                  claim.case_disposition === 'ABANDONED' ? '#f39c12' : '#9b59b6';
+  status.style.color = 'white';
+  status.textContent = claim.case_disposition;
+  container.appendChild(status);
+  container.appendChild(document.createElement('br'));
+  
+  const blmCase = document.createElement('span');
+  blmCase.textContent = `BLM Case: ${claim.blm_case_id}`;
+  container.appendChild(blmCase);
+  container.appendChild(document.createElement('br'));
+  
+  const claimType = document.createElement('span');
+  claimType.textContent = `Type: ${claim.claim_type}`;
+  container.appendChild(claimType);
+  container.appendChild(document.createElement('br'));
+  
+  const claimant = document.createElement('span');
+  claimant.textContent = `Claimant: ${claim.claimant_name}`;
+  container.appendChild(claimant);
+  container.appendChild(document.createElement('br'));
+  
+  const location = document.createElement('span');
+  location.textContent = `Location: ${claim.township} ${claim.range} Sec ${claim.section}`;
+  container.appendChild(location);
+  container.appendChild(document.createElement('br'));
+  
+  const closeDate = document.createElement('span');
+  closeDate.textContent = `Closed: ${claim.close_date}`;
+  container.appendChild(closeDate);
+  
+  // Action buttons
+  const actions = document.createElement('div');
+  actions.style.cssText = 'margin-top: 10px; padding-top: 8px; border-top: 1px solid #ddd;';
+  
+  const viewDetailsBtn = document.createElement('button');
+  viewDetailsBtn.textContent = 'View Full Details';
+  viewDetailsBtn.style.cssText = 'background: #2c3e50; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; width: 100%;';
+  viewDetailsBtn.onclick = () => onViewDetails(claim);
+  actions.appendChild(viewDetailsBtn);
+  
+  const copyBtn = document.createElement('button');
+  copyBtn.textContent = 'Copy Claim ID';
+  copyBtn.style.cssText = 'background: #95a5a6; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; width: 100%; margin-top: 4px; font-size: 12px;';
+  copyBtn.onclick = () => {
+    navigator.clipboard.writeText(claim.blm_case_id);
+    copyBtn.textContent = 'Copied!';
+    setTimeout(() => { copyBtn.textContent = 'Copy Claim ID'; }, 1500);
+  };
+  actions.appendChild(copyBtn);
+  
+  container.appendChild(actions);
+  
+  if (claim.is_sample_data) {
+    const sampleNote = document.createElement('div');
+    sampleNote.style.cssText = 'font-size: 10px; color: #999; margin-top: 8px; text-align: center;';
+    sampleNote.textContent = '⚠ Sample data - not verified';
+    container.appendChild(sampleNote);
+  }
+  
+  return container;
+}
+
+// Claim Details Panel Component
+function ClaimDetailsPanel({ claim, onClose }) {
+  const [activeTab, setActiveTab] = useState('overview');
+  
+  if (!claim) return null;
+  
+  const hasDocuments = claim.documents && claim.documents.length > 0;
+  const hasImages = claim.images && claim.images.length > 0;
+  const hasHistory = claim.history && claim.history.length > 0;
+  const hasSourceLinks = claim.source_links && claim.source_links.length > 0;
+  
+  return (
+    <div className="claim-details-panel" style={{
+      position: 'fixed',
+      top: 0,
+      right: 0,
+      width: '400px',
+      height: '100vh',
+      backgroundColor: 'white',
+      boxShadow: '-2px 0 10px rgba(0,0,0,0.2)',
+      zIndex: 1000,
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden'
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: '16px',
+        backgroundColor: '#2c3e50',
+        color: 'white',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '18px' }}>{claim.claim_name}</h2>
+          <span style={{ fontSize: '12px', opacity: 0.8 }}>{claim.blm_case_id}</span>
+        </div>
+        <button 
+          onClick={onClose}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: 'white',
+            fontSize: '24px',
+            cursor: 'pointer',
+            padding: '0 8px'
+          }}
+          aria-label="Close panel"
+        >
+          ×
+        </button>
+      </div>
+      
+      {/* Sample data warning */}
+      {claim.is_sample_data && (
+        <div style={{
+          padding: '8px 16px',
+          backgroundColor: '#fff3cd',
+          color: '#856404',
+          fontSize: '12px',
+          textAlign: 'center'
+        }}>
+          ⚠ This is sample/demonstration data, not from a verified source.
+        </div>
+      )}
+      
+      {/* Tab navigation */}
+      <div style={{
+        display: 'flex',
+        borderBottom: '1px solid #ddd',
+        backgroundColor: '#f5f5f5'
+      }}>
+        <button 
+          onClick={() => setActiveTab('overview')}
+          style={{
+            flex: 1,
+            padding: '10px',
+            border: 'none',
+            background: activeTab === 'overview' ? 'white' : 'transparent',
+            cursor: 'pointer',
+            fontWeight: activeTab === 'overview' ? 'bold' : 'normal',
+            borderBottom: activeTab === 'overview' ? '2px solid #2c3e50' : 'none'
+          }}
+        >
+          Overview
+        </button>
+        {hasHistory && (
+          <button 
+            onClick={() => setActiveTab('history')}
+            style={{
+              flex: 1,
+              padding: '10px',
+              border: 'none',
+              background: activeTab === 'history' ? 'white' : 'transparent',
+              cursor: 'pointer',
+              fontWeight: activeTab === 'history' ? 'bold' : 'normal',
+              borderBottom: activeTab === 'history' ? '2px solid #2c3e50' : 'none'
+            }}
+          >
+            History
+          </button>
+        )}
+        {hasDocuments && (
+          <button 
+            onClick={() => setActiveTab('documents')}
+            style={{
+              flex: 1,
+              padding: '10px',
+              border: 'none',
+              background: activeTab === 'documents' ? 'white' : 'transparent',
+              cursor: 'pointer',
+              fontWeight: activeTab === 'documents' ? 'bold' : 'normal',
+              borderBottom: activeTab === 'documents' ? '2px solid #2c3e50' : 'none'
+            }}
+          >
+            Documents
+          </button>
+        )}
+        {hasImages && (
+          <button 
+            onClick={() => setActiveTab('images')}
+            style={{
+              flex: 1,
+              padding: '10px',
+              border: 'none',
+              background: activeTab === 'images' ? 'white' : 'transparent',
+              cursor: 'pointer',
+              fontWeight: activeTab === 'images' ? 'bold' : 'normal',
+              borderBottom: activeTab === 'images' ? '2px solid #2c3e50' : 'none'
+            }}
+          >
+            Images
+          </button>
+        )}
+      </div>
+      
+      {/* Tab content */}
+      <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
+        {activeTab === 'overview' && (
+          <div>
+            <div style={{ marginBottom: '16px' }}>
+              <span style={{
+                display: 'inline-block',
+                padding: '4px 12px',
+                borderRadius: '4px',
+                backgroundColor: claim.case_disposition === 'CLOSED' ? '#e74c3c' : 
+                                claim.case_disposition === 'ABANDONED' ? '#f39c12' : '#9b59b6',
+                color: 'white',
+                fontSize: '14px'
+              }}>
+                {claim.case_disposition}
+              </span>
+            </div>
+            
+            <table style={{ width: '100%', fontSize: '14px' }}>
+              <tbody>
+                <tr>
+                  <td style={{ padding: '6px 0', fontWeight: 'bold', width: '40%' }}>Claim Type</td>
+                  <td style={{ padding: '6px 0' }}>{claim.claim_type}</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '6px 0', fontWeight: 'bold' }}>Claimant</td>
+                  <td style={{ padding: '6px 0' }}>{claim.claimant_name}</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '6px 0', fontWeight: 'bold' }}>County</td>
+                  <td style={{ padding: '6px 0' }}>{claim.county}</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '6px 0', fontWeight: 'bold' }}>Location</td>
+                  <td style={{ padding: '6px 0' }}>{claim.township} {claim.range} Sec {claim.section}</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '6px 0', fontWeight: 'bold' }}>Meridian</td>
+                  <td style={{ padding: '6px 0' }}>{claim.meridian || 'N/A'}</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '6px 0', fontWeight: 'bold' }}>Acreage</td>
+                  <td style={{ padding: '6px 0' }}>{claim.acreage ? `${claim.acreage} acres` : 'N/A'}</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '6px 0', fontWeight: 'bold' }}>Commodity</td>
+                  <td style={{ padding: '6px 0' }}>{claim.commodity || 'N/A'}</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '6px 0', fontWeight: 'bold' }}>Location Date</td>
+                  <td style={{ padding: '6px 0' }}>{claim.location_date}</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '6px 0', fontWeight: 'bold' }}>Close Date</td>
+                  <td style={{ padding: '6px 0' }}>{claim.close_date}</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '6px 0', fontWeight: 'bold' }}>Maintenance Fees</td>
+                  <td style={{ padding: '6px 0' }}>
+                    {claim.maintenance_fee_paid ? '✓ Paid' : '✗ Not Paid'}
+                  </td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '6px 0', fontWeight: 'bold' }}>Coordinates</td>
+                  <td style={{ padding: '6px 0' }}>{claim.latitude}, {claim.longitude}</td>
+                </tr>
+              </tbody>
+            </table>
+            
+            {claim.notes && (
+              <div style={{ marginTop: '16px', padding: '12px', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
+                <strong>Notes:</strong>
+                <p style={{ margin: '8px 0 0 0' }}>{claim.notes}</p>
+              </div>
+            )}
+            
+            {/* Action buttons */}
+            <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button
+                onClick={() => navigator.clipboard.writeText(claim.blm_case_id)}
+                style={{
+                  padding: '10px',
+                  backgroundColor: '#2c3e50',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Copy Claim ID
+              </button>
+              
+              {hasSourceLinks && claim.source_links.map((link, idx) => (
+                link.url ? (
+                  <a
+                    key={idx}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      padding: '10px',
+                      backgroundColor: '#3498db',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                      textDecoration: 'none'
+                    }}
+                  >
+                    Open {link.name}
+                  </a>
+                ) : (
+                  <button
+                    key={idx}
+                    disabled
+                    style={{
+                      padding: '10px',
+                      backgroundColor: '#bdc3c7',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'not-allowed'
+                    }}
+                  >
+                    {link.name} (unavailable)
+                  </button>
+                )
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {activeTab === 'history' && hasHistory && (
+          <div>
+            <h3 style={{ marginTop: 0 }}>Claim History</h3>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {claim.history.map((event, idx) => (
+                <li key={idx} style={{
+                  padding: '12px',
+                  borderLeft: '3px solid #2c3e50',
+                  marginBottom: '8px',
+                  backgroundColor: '#f8f9fa'
+                }}>
+                  <strong>{event.date}</strong>
+                  <p style={{ margin: '4px 0 0 0' }}>{event.event}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        
+        {activeTab === 'documents' && hasDocuments && (
+          <div>
+            <h3 style={{ marginTop: 0 }}>Documents & Forms</h3>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {claim.documents.map((doc, idx) => (
+                <li key={idx} style={{
+                  padding: '12px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  marginBottom: '8px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <div>
+                    <strong>{doc.name}</strong>
+                    <span style={{ marginLeft: '8px', fontSize: '12px', color: '#666' }}>{doc.type}</span>
+                  </div>
+                  {doc.url ? (
+                    <a href={doc.url} target="_blank" rel="noopener noreferrer" style={{ color: '#3498db' }}>
+                      Download
+                    </a>
+                  ) : (
+                    <span style={{ color: '#999', fontSize: '12px' }}>Not available</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        
+        {activeTab === 'images' && hasImages && (
+          <div>
+            <h3 style={{ marginTop: 0 }}>Maps & Images</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+              {claim.images.map((img, idx) => (
+                <div key={idx} style={{
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  padding: '8px',
+                  textAlign: 'center'
+                }}>
+                  {img.url ? (
+                    <img 
+                      src={img.thumbnail || img.url} 
+                      alt={img.name}
+                      style={{ maxWidth: '100%', borderRadius: '4px' }}
+                    />
+                  ) : (
+                    <div style={{
+                      height: '80px',
+                      backgroundColor: '#f0f0f0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#999'
+                    }}>
+                      No preview
+                    </div>
+                  )}
+                  <p style={{ margin: '8px 0 0 0', fontSize: '12px' }}>{img.name}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Mobile modal wrapper for ClaimDetailsPanel
+function ClaimDetailsModal({ claim, onClose }) {
+  if (!claim) return null;
+  
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      zIndex: 999,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', height: '100%' }}>
+        <ClaimDetailsPanel claim={claim} onClose={onClose} />
+      </div>
+    </div>
+  );
+}
 
 function App() {
   const [claims, setClaims] = useState([]);
   const [loading, setLoading] = useState(true);
   const [mapsReady, setMapsReady] = useState(false);
+  const [selectedClaim, setSelectedClaim] = useState(null);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
+  const markersRef = useRef([]);
 
-  // Wait for Google Maps to signal it is ready via the initGoogleMaps callback (async loading)
+  // Handle window resize for responsive layout
   useEffect(() => {
-    const handleMapsReady = () => setMapsReady(true);
-    if (window.googleMapsReady) {
-      handleMapsReady();
-    } else {
-      window.onGoogleMapsReady = handleMapsReady;
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Dynamically load Google Maps script using the API key from environment
+  useEffect(() => {
+    const apiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
+    
+    // If no API key, maps won't be available
+    if (!apiKey) {
+      return;
     }
+
+    // Check if already loaded
+    if (window.google && window.google.maps) {
+      setMapsReady(true);
+      return;
+    }
+
+    // Create callback for when script loads
+    window.initGoogleMaps = () => {
+      window.googleMapsReady = true;
+      setMapsReady(true);
+    };
+
+    // Create and append script tag
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&callback=initGoogleMaps`;
+    script.async = true;
+    script.defer = true;
+    document.head.appendChild(script);
+
     return () => {
-      window.onGoogleMapsReady = null;
+      // Cleanup callback
+      delete window.initGoogleMaps;
     };
   }, []);
 
   // Fetch claims from the API, falling back to sample data when unavailable
   useEffect(() => {
+    if (!api.isConfigured()) {
+      // No API configured, use sample data immediately
+      setClaims(SAMPLE_CLAIMS);
+      setLoading(false);
+      return;
+    }
+    
     api.searchClaims()
       .then(response => {
         setClaims(response.data);
@@ -70,9 +641,14 @@ function App() {
       });
   }, []);
 
-  // Initialize the map and place markers once both Maps and claims are ready
+  // Callback to handle viewing claim details
+  const handleViewDetails = useCallback((claim) => {
+    setSelectedClaim(claim);
+  }, []);
+
+  // Initialize the map once when ready
   useEffect(() => {
-    if (!mapsReady || claims.length === 0 || !mapRef.current) return;
+    if (!mapsReady || !mapRef.current || mapInstanceRef.current) return;
 
     const map = new window.google.maps.Map(mapRef.current, {
       center: { lat: 34.0489, lng: -111.0937 },
@@ -80,31 +656,50 @@ function App() {
       mapTypeId: 'terrain'
     });
     mapInstanceRef.current = map;
+  }, [mapsReady]);
 
+  // Update markers when claims change
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    // Clear existing markers
+    markersRef.current.forEach(marker => {
+      marker.setMap(null);
+    });
+    markersRef.current = [];
+
+    // Add new markers
     claims.forEach(claim => {
-      if (!claim.latitude || !claim.longitude) return;
+      const latitude = parseFloat(claim.latitude);
+      const longitude = parseFloat(claim.longitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+
       const marker = new window.google.maps.Marker({
-        position: { lat: parseFloat(claim.latitude), lng: parseFloat(claim.longitude) },
+        position: { lat: latitude, lng: longitude },
         map,
         title: claim.claim_name
       });
 
       const infoWindow = new window.google.maps.InfoWindow({
-        content: `
-          <div>
-            <strong>${claim.claim_name}</strong><br>
-            BLM Case: ${claim.blm_case_id}<br>
-            Type: ${claim.claim_type}<br>
-            Location: ${claim.township} ${claim.range} Sec ${claim.section}<br>
-          </div>
-        `
+        content: createInfoContent(claim, handleViewDetails)
       });
 
       marker.addListener('click', () => {
         infoWindow.open(map, marker);
       });
+
+      markersRef.current.push(marker);
     });
-  }, [mapsReady, claims]);
+
+    // Cleanup on unmount
+    return () => {
+      markersRef.current.forEach(marker => {
+        marker.setMap(null);
+      });
+      markersRef.current = [];
+    };
+  }, [claims, handleViewDetails]);
 
   return (
     <div className="app">
@@ -114,7 +709,7 @@ function App() {
         </div>
       </header>
 
-      <main className="app-content" style={{ flexDirection: 'column' }}>
+      <main className="app-content" style={{ flexDirection: 'column', position: 'relative' }}>
         {loading ? (
           <p style={{ padding: '1rem' }}>Loading claims…</p>
         ) : (
@@ -142,6 +737,17 @@ function App() {
 
             <div style={{ padding: '1rem' }}>
               <h2>Claims Found: {claims.length}</h2>
+              {claims.some(c => c.is_sample_data) && (
+                <p style={{ 
+                  color: '#856404', 
+                  backgroundColor: '#fff3cd', 
+                  padding: '8px', 
+                  borderRadius: '4px',
+                  fontSize: '14px'
+                }}>
+                  ⚠ Displaying sample data for demonstration. Configure the API_URL environment variable to load real BLM data.
+                </p>
+              )}
               <div style={{ overflowX: 'auto' }}>
                 <table
                   style={{ width: '100%', borderCollapse: 'collapse', marginTop: '1rem' }}
@@ -155,6 +761,7 @@ function App() {
                       <th style={{ padding: '8px', textAlign: 'left' }}>County</th>
                       <th style={{ padding: '8px', textAlign: 'left' }}>Status</th>
                       <th style={{ padding: '8px', textAlign: 'left' }}>Close Date</th>
+                      <th style={{ padding: '8px', textAlign: 'left' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -167,8 +774,35 @@ function App() {
                         <td style={{ padding: '8px' }}>{claim.blm_case_id}</td>
                         <td style={{ padding: '8px' }}>{claim.claim_type}</td>
                         <td style={{ padding: '8px' }}>{claim.county}</td>
-                        <td style={{ padding: '8px' }}>{claim.case_disposition}</td>
+                        <td style={{ padding: '8px' }}>
+                          <span style={{
+                            padding: '2px 6px',
+                            borderRadius: '3px',
+                            fontSize: '12px',
+                            backgroundColor: claim.case_disposition === 'CLOSED' ? '#e74c3c' : 
+                                            claim.case_disposition === 'ABANDONED' ? '#f39c12' : '#9b59b6',
+                            color: 'white'
+                          }}>
+                            {claim.case_disposition}
+                          </span>
+                        </td>
                         <td style={{ padding: '8px' }}>{claim.close_date}</td>
+                        <td style={{ padding: '8px' }}>
+                          <button
+                            onClick={() => setSelectedClaim(claim)}
+                            style={{
+                              backgroundColor: '#2c3e50',
+                              color: 'white',
+                              border: 'none',
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontSize: '12px'
+                            }}
+                          >
+                            View Details
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -184,6 +818,15 @@ function App() {
           Mining Claim Locator &copy; {new Date().getFullYear()} | Data sourced from BLM MLRS/LR2000
         </p>
       </footer>
+
+      {/* Claim details panel/modal */}
+      {selectedClaim && (
+        isMobile ? (
+          <ClaimDetailsModal claim={selectedClaim} onClose={() => setSelectedClaim(null)} />
+        ) : (
+          <ClaimDetailsPanel claim={selectedClaim} onClose={() => setSelectedClaim(null)} />
+        )
+      )}
     </div>
   );
 }
