@@ -30,13 +30,40 @@ function FitBounds({ claims }) {
   return null;
 }
 
-const MapView = ({ claims = [], loading, error }) => {
+/** Flies to a selected claim and opens its popup. */
+function MapController({ selectedClaimId, claims, markerRefs }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!selectedClaimId) return;
+
+    const claim = claims.find(c => c.id === selectedClaimId);
+    if (!claim) return;
+
+    const lat = parseFloat(claim.latitude);
+    const lng = parseFloat(claim.longitude);
+    if (isNaN(lat) || isNaN(lng)) return;
+
+    map.flyTo([lat, lng], 13, { duration: 0.8 });
+
+    // Open the popup after the fly animation completes
+    setTimeout(() => {
+      const marker = markerRefs.current[selectedClaimId];
+      if (marker) marker.openPopup();
+    }, 900);
+  }, [selectedClaimId, claims, map, markerRefs]);
+
+  return null;
+}
+
+const MapView = ({ claims = [], loading, error, selectedClaimId, onViewDetails }) => {
   const arizonaCenter = [34.0489, -111.0937];
+  const markerRefs = useRef({});
 
   const formatDate = (dateStr) => {
     if (!dateStr) return 'Unknown';
     try {
-      return new Date(dateStr).toLocaleDateString();
+      return new Date(dateStr + 'T00:00:00').toLocaleDateString();
     } catch {
       return dateStr;
     }
@@ -72,7 +99,11 @@ const MapView = ({ claims = [], loading, error }) => {
           if (isNaN(lat) || isNaN(lng)) return null;
 
           return (
-            <Marker key={claim.id} position={[lat, lng]}>
+            <Marker
+              key={claim.id}
+              position={[lat, lng]}
+              ref={(el) => { markerRefs.current[claim.id] = el; }}
+            >
               <Popup>
                 <div className="map-popup">
                   <strong>{claim.claim_name}</strong>
@@ -90,6 +121,15 @@ const MapView = ({ claims = [], loading, error }) => {
                   </span>
                   <br />
                   <span>Closed: {formatDate(claim.close_date)}</span>
+                  <br />
+                  {onViewDetails && (
+                    <button
+                      className="popup-details-btn"
+                      onClick={() => onViewDetails(claim.id)}
+                    >
+                      View Details ↓
+                    </button>
+                  )}
                 </div>
               </Popup>
             </Marker>
@@ -97,6 +137,11 @@ const MapView = ({ claims = [], loading, error }) => {
         })}
 
         <FitBounds claims={claims} />
+        <MapController
+          selectedClaimId={selectedClaimId}
+          claims={claims}
+          markerRefs={markerRefs}
+        />
       </MapContainer>
 
       <div className="map-stats" aria-live="polite">
