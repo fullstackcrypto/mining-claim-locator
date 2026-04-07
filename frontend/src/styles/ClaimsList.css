@@ -1,0 +1,231 @@
+/* ClaimsList.css — Results list below the map */
+
+.claims-list {
+  margin-top: 1rem;
+  background: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 1rem;
+}
+
+.claims-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.claims-list-header h2 {
+  font-size: 1rem;
+  color: var(--primary-color);
+  margin: 0;
+}
+
+.page-label {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+/* Pagination */
+.claims-pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.claims-pagination:last-child {
+  margin-bottom: 0;
+  margin-top: 0.75rem;
+}
+
+.page-btn {
+  padding: 0.3rem 0.75rem;
+  background: var(--primary-color);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.page-btn:disabled {
+  background: var(--border-color);
+  color: #999;
+  cursor: not-allowed;
+}
+
+.page-info {
+  font-size: 0.85rem;
+  color: #555;
+}
+
+/* Cards container */
+.claims-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Individual card */
+.claim-card {
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+  transition: box-shadow 0.15s ease;
+}
+
+.claim-card:hover {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.claim-card.expanded {
+  border-color: var(--secondary-color);
+}
+
+/* Clickable header */
+.claim-card-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--bg-color);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.claim-card-header:hover {
+  background: #e8ecf0;
+}
+
+.claim-card.expanded .claim-card-header {
+  background: #e8f4fd;
+}
+
+.claim-name {
+  font-weight: 700;
+  color: var(--primary-color);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.claim-badges {
+  display: flex;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.status-badge,
+.type-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.status-badge.status-closed {
+  background: #fdecea;
+  color: #c0392b;
+}
+
+.status-badge.status-abandoned {
+  background: #fff3e0;
+  color: #e67e22;
+}
+
+.status-badge.status-void {
+  background: #f3e5f5;
+  color: #8e44ad;
+}
+
+.type-badge {
+  background: #e8f4fd;
+  color: #2980b9;
+}
+
+.expand-icon {
+  flex-shrink: 0;
+  color: #999;
+  font-size: 0.75rem;
+}
+
+/* Summary fields (always visible) */
+.claim-card-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.35rem 1rem;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+/* Expanded detail fields */
+.claim-card-details {
+  padding: 0 0.75rem 0.75rem;
+}
+
+.details-divider {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 0 0 0.6rem;
+}
+
+.claim-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.35rem 1rem;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+/* Field label/value pairs */
+.claim-field {
+  display: flex;
+  flex-direction: column;
+}
+
+.field-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #888;
+  margin-bottom: 0.1rem;
+}
+
+.claim-notes {
+  grid-column: 1 / -1;
+}
+
+/* View on Map button */
+.view-on-map-btn {
+  padding: 0.4rem 0.9rem;
+  background: var(--secondary-color);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.view-on-map-btn:hover {
+  background: #d35400;
+}
+
+/* Mobile — stack to single column */
+@media (max-width: 480px) {
+  .claim-card-summary,
+  .claim-details-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}

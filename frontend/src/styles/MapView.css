@@ -54,3 +54,20 @@
   font-size: 0.85rem;
   line-height: 1.5;
 }
+
+.popup-details-btn {
+  display: inline-block;
+  margin-top: 0.4rem;
+  padding: 0.25rem 0.6rem;
+  background: var(--secondary-color);
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.popup-details-btn:hover {
+  background: #d35400;
+}

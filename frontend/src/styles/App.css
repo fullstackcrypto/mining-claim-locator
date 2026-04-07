@@ -129,3 +129,13 @@ select:focus {
   color: #666;
   font-size: 1rem;
 }
+
+.api-notice {
+  background: #fff8e1;
+  border: 1px solid #f9a825;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  color: #5d4037;
+  margin-bottom: 0.5rem;
+}
