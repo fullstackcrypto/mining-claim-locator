@@ -1,14 +1,24 @@
 const express = require('express');
 const router = express.Router();
+const { Pool } = require('pg');
 
-// NOTE: PostgreSQL pool is commented out until a real database is configured.
-// When DATABASE_URL is set, uncomment this and implement database queries.
-// const { Pool } = require('pg');
-// const pool = new Pool({
-//   connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/mining_claims'
-// });
+// PostgreSQL connection pool
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/mining_claims'
+});
 
-// Rich sample data with full detail structure
+// Check if database is available
+let dbAvailable = false;
+pool.query('SELECT 1')
+  .then(() => {
+    dbAvailable = true;
+    console.log('Database connection established');
+  })
+  .catch(() => {
+    console.log('Database not available, using sample data fallback');
+  });
+
+// Sample data fallback (used when database is not available)
 const SAMPLE_CLAIMS = [
   {
     id: 1,
@@ -29,22 +39,20 @@ const SAMPLE_CLAIMS = [
     acreage: 20.5,
     commodity: 'GOLD, SILVER',
     maintenance_fee_paid: false,
-    notes: 'Claim closed due to failure to pay maintenance fees',
+    notes: 'Sample claim for development purposes',
+    reason_closed: 'Failure to pay maintenance fees',
+    source_system: 'SAMPLE',
+    is_verified: false,
     history: [
-      { date: '1995-06-12', event: 'Claim located' },
-      { date: '1996-09-01', event: 'Annual maintenance fee paid' },
-      { date: '2009-09-01', event: 'Final maintenance fee paid' },
-      { date: '2010-09-01', event: 'Claim closed - fees not paid' }
+      { event_date: '1995-06-12', event_type: 'LOCATED', event_description: 'Claim located and recorded' },
+      { event_date: '1996-09-01', event_type: 'FEE_PAID', event_description: 'Annual maintenance fee paid' },
+      { event_date: '2010-09-01', event_type: 'CLOSED', event_description: 'Claim closed - fees not paid' }
     ],
-    documents: [
-      { name: 'Location Notice', type: 'PDF', url: null },
-      { name: 'Proof of Labor 1996', type: 'PDF', url: null }
-    ],
+    documents: [],
     images: [],
     source_links: [
-      { name: 'BLM LR2000 Record', url: 'https://reports.blm.gov/reports.cfm?application=LR2000' }
-    ],
-    is_sample_data: true
+      { link_type: 'BLM_MLRS', link_name: 'BLM MLRS Record', link_url: 'https://mlrs.blm.gov/', is_verified: false }
+    ]
   },
   {
     id: 2,
@@ -65,15 +73,17 @@ const SAMPLE_CLAIMS = [
     acreage: 40.0,
     commodity: 'GOLD',
     maintenance_fee_paid: false,
-    notes: 'Claim abandoned by claimant',
+    notes: 'Sample claim for development purposes',
+    reason_closed: 'Abandoned by claimant',
+    source_system: 'SAMPLE',
+    is_verified: false,
     history: [
-      { date: '2002-03-22', event: 'Claim located' },
-      { date: '2015-07-15', event: 'Claim abandoned' }
+      { event_date: '2002-03-22', event_type: 'LOCATED', event_description: 'Claim located' },
+      { event_date: '2015-07-15', event_type: 'ABANDONED', event_description: 'Claim abandoned' }
     ],
     documents: [],
     images: [],
-    source_links: [],
-    is_sample_data: true
+    source_links: []
   },
   {
     id: 3,
@@ -94,25 +104,23 @@ const SAMPLE_CLAIMS = [
     acreage: 20.0,
     commodity: 'COPPER',
     maintenance_fee_paid: false,
-    notes: 'Claim voided due to defective location',
+    notes: 'Sample claim for development purposes',
+    reason_closed: 'Voided due to defective location',
+    source_system: 'SAMPLE',
+    is_verified: false,
     history: [
-      { date: '1988-11-05', event: 'Claim located' },
-      { date: '1999-12-31', event: 'Claim voided' }
+      { event_date: '1988-11-05', event_type: 'LOCATED', event_description: 'Claim located' },
+      { event_date: '1999-12-31', event_type: 'VOID', event_description: 'Claim voided' }
     ],
-    documents: [
-      { name: 'Original Location Notice', type: 'PDF', url: null }
-    ],
-    images: [
-      { name: 'Site Photo 1989', url: null, thumbnail: null }
-    ],
+    documents: [],
+    images: [],
     source_links: [
-      { name: 'BLM LR2000 Record', url: 'https://reports.blm.gov/reports.cfm?application=LR2000' }
-    ],
-    is_sample_data: true
+      { link_type: 'BLM_MLRS', link_name: 'BLM MLRS Record', link_url: 'https://mlrs.blm.gov/', is_verified: false }
+    ]
   }
 ];
 
-// Advanced search endpoint
+// Search claims endpoint
 router.get('/search', async (req, res) => {
   try {
     const {
@@ -124,11 +132,70 @@ router.get('/search', async (req, res) => {
       case_disposition,
       date_from,
       date_to,
-      claimant
+      claimant,
+      limit = 100,
+      offset = 0
     } = req.query;
-    
-    // For development, return sample data
-    // Filter by query params if provided
+
+    // Try database first
+    if (dbAvailable) {
+      let query = `
+        SELECT 
+          id, blm_case_id, claim_name, claim_type, claimant_name, case_disposition,
+          location_date, close_date, county, township, range, section, meridian,
+          latitude, longitude, acreage, commodity, maintenance_fee_paid,
+          notes, reason_closed, source_system, is_verified
+        FROM mining_claims
+        WHERE 1=1
+      `;
+      const params = [];
+      let paramIndex = 1;
+
+      if (county) {
+        query += ` AND UPPER(county) = UPPER($${paramIndex++})`;
+        params.push(county);
+      }
+      if (township) {
+        query += ` AND UPPER(township) = UPPER($${paramIndex++})`;
+        params.push(township);
+      }
+      if (range) {
+        query += ` AND UPPER(range) = UPPER($${paramIndex++})`;
+        params.push(range);
+      }
+      if (section) {
+        query += ` AND section = $${paramIndex++}`;
+        params.push(section);
+      }
+      if (claim_type) {
+        query += ` AND UPPER(claim_type) = UPPER($${paramIndex++})`;
+        params.push(claim_type);
+      }
+      if (case_disposition) {
+        query += ` AND UPPER(case_disposition) = UPPER($${paramIndex++})`;
+        params.push(case_disposition);
+      }
+      if (date_from) {
+        query += ` AND close_date >= $${paramIndex++}`;
+        params.push(date_from);
+      }
+      if (date_to) {
+        query += ` AND close_date <= $${paramIndex++}`;
+        params.push(date_to);
+      }
+      if (claimant) {
+        query += ` AND UPPER(claimant_name) LIKE UPPER($${paramIndex++})`;
+        params.push(`%${claimant}%`);
+      }
+
+      query += ` ORDER BY close_date DESC NULLS LAST LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
+      params.push(parseInt(limit, 10), parseInt(offset, 10));
+
+      const result = await pool.query(query, params);
+      return res.json(result.rows);
+    }
+
+    // Fallback to sample data
     let results = [...SAMPLE_CLAIMS];
     
     if (county) {
@@ -144,16 +211,68 @@ router.get('/search', async (req, res) => {
     return res.json(results);
   } catch (error) {
     console.error('Search error:', error);
-    res.status(500).json({ error: 'Database query failed' });
+    res.status(500).json({ error: 'Search failed', details: error.message });
   }
 });
 
-// Get claim details
+// Get claim details by ID
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    
-    // Find in sample data
+
+    if (dbAvailable) {
+      // Get main claim data
+      const claimResult = await pool.query(`
+        SELECT * FROM mining_claims WHERE id = $1
+      `, [id]);
+
+      if (claimResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Claim not found' });
+      }
+
+      const claim = claimResult.rows[0];
+
+      // Get history
+      const historyResult = await pool.query(`
+        SELECT event_date, event_type, event_description, source_document, source_url
+        FROM claim_history 
+        WHERE claim_id = $1 
+        ORDER BY event_date ASC
+      `, [id]);
+
+      // Get documents
+      const docsResult = await pool.query(`
+        SELECT document_type, document_name, document_date, document_url, file_type, is_available
+        FROM claim_documents 
+        WHERE claim_id = $1 
+        ORDER BY document_date DESC
+      `, [id]);
+
+      // Get images
+      const imagesResult = await pool.query(`
+        SELECT image_type, image_name, image_date, image_url, thumbnail_url
+        FROM claim_images 
+        WHERE claim_id = $1 
+        ORDER BY image_date DESC
+      `, [id]);
+
+      // Get source links
+      const linksResult = await pool.query(`
+        SELECT link_type, link_name, link_url, is_verified
+        FROM claim_source_links 
+        WHERE claim_id = $1
+      `, [id]);
+
+      return res.json({
+        ...claim,
+        history: historyResult.rows,
+        documents: docsResult.rows,
+        images: imagesResult.rows,
+        source_links: linksResult.rows
+      });
+    }
+
+    // Fallback to sample data
     const claim = SAMPLE_CLAIMS.find(c => c.id === parseInt(id, 10));
     
     if (claim) {
@@ -163,7 +282,99 @@ router.get('/:id', async (req, res) => {
     return res.status(404).json({ error: 'Claim not found' });
   } catch (error) {
     console.error('Error fetching claim:', error);
-    res.status(500).json({ error: 'Database query failed' });
+    res.status(500).json({ error: 'Failed to fetch claim details', details: error.message });
+  }
+});
+
+// Get claim history
+router.get('/:id/history', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (dbAvailable) {
+      const result = await pool.query(`
+        SELECT event_date, event_type, event_description, source_document, source_url
+        FROM claim_history 
+        WHERE claim_id = $1 
+        ORDER BY event_date ASC
+      `, [id]);
+
+      return res.json(result.rows);
+    }
+
+    // Fallback
+    const claim = SAMPLE_CLAIMS.find(c => c.id === parseInt(id, 10));
+    return res.json(claim?.history || []);
+  } catch (error) {
+    console.error('Error fetching claim history:', error);
+    res.status(500).json({ error: 'Failed to fetch claim history' });
+  }
+});
+
+// Get claim documents
+router.get('/:id/documents', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (dbAvailable) {
+      const result = await pool.query(`
+        SELECT document_type, document_name, document_date, document_url, file_type, is_available
+        FROM claim_documents 
+        WHERE claim_id = $1 
+        ORDER BY document_date DESC
+      `, [id]);
+
+      return res.json(result.rows);
+    }
+
+    // Fallback
+    const claim = SAMPLE_CLAIMS.find(c => c.id === parseInt(id, 10));
+    return res.json(claim?.documents || []);
+  } catch (error) {
+    console.error('Error fetching claim documents:', error);
+    res.status(500).json({ error: 'Failed to fetch claim documents' });
+  }
+});
+
+// Get database stats
+router.get('/stats/summary', async (req, res) => {
+  try {
+    if (dbAvailable) {
+      const result = await pool.query(`
+        SELECT 
+          COUNT(*) as total_claims,
+          COUNT(*) FILTER (WHERE case_disposition = 'CLOSED') as closed_claims,
+          COUNT(*) FILTER (WHERE case_disposition = 'ABANDONED') as abandoned_claims,
+          COUNT(*) FILTER (WHERE case_disposition = 'VOID') as void_claims,
+          COUNT(*) FILTER (WHERE case_disposition = 'ACTIVE') as active_claims,
+          COUNT(*) FILTER (WHERE is_verified = TRUE) as verified_claims,
+          COUNT(*) FILTER (WHERE source_system = 'MLRS') as mlrs_sourced,
+          COUNT(*) FILTER (WHERE source_system = 'SAMPLE') as sample_data,
+          COUNT(DISTINCT county) as counties_covered
+        FROM mining_claims
+      `);
+
+      return res.json({
+        ...result.rows[0],
+        database_connected: true
+      });
+    }
+
+    return res.json({
+      total_claims: SAMPLE_CLAIMS.length,
+      closed_claims: SAMPLE_CLAIMS.filter(c => c.case_disposition === 'CLOSED').length,
+      abandoned_claims: SAMPLE_CLAIMS.filter(c => c.case_disposition === 'ABANDONED').length,
+      void_claims: SAMPLE_CLAIMS.filter(c => c.case_disposition === 'VOID').length,
+      active_claims: 0,
+      verified_claims: 0,
+      mlrs_sourced: 0,
+      sample_data: SAMPLE_CLAIMS.length,
+      counties_covered: new Set(SAMPLE_CLAIMS.map(c => c.county)).size,
+      database_connected: false
+    });
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    res.status(500).json({ error: 'Failed to fetch stats' });
   }
 });
 

@@ -1,5 +1,6 @@
 -- scripts/setup_database.sql
--- PostgreSQL setup script for Mining Claim Locator
+-- PostgreSQL + PostGIS setup script for Mining Claim Locator
+-- Operational schema for Arizona mining claims from BLM MLRS
 
 -- Create database if it doesn't exist
 -- Run this separately: CREATE DATABASE mining_claims;
@@ -7,149 +8,152 @@
 -- Enable PostGIS extension
 CREATE EXTENSION IF NOT EXISTS postgis;
 
--- Drop tables if they exist
-DROP TABLE IF EXISTS expired_mining_claims;
-DROP TABLE IF EXISTS active_mining_claims;
-DROP TABLE IF EXISTS historical_claims;
-DROP TABLE IF EXISTS claim_documents;
-DROP TABLE IF EXISTS data_refresh_logs;
+-- Drop tables if they exist (in correct order for foreign keys)
+DROP TABLE IF EXISTS claim_history CASCADE;
+DROP TABLE IF EXISTS claim_documents CASCADE;
+DROP TABLE IF EXISTS claim_images CASCADE;
+DROP TABLE IF EXISTS claim_source_links CASCADE;
+DROP TABLE IF EXISTS mining_claims CASCADE;
+DROP TABLE IF EXISTS data_refresh_logs CASCADE;
 
--- Create table for expired mining claims
-CREATE TABLE expired_mining_claims (
+-- Main claims table (unified for all claim statuses)
+CREATE TABLE mining_claims (
     id SERIAL PRIMARY KEY,
-    claim_id VARCHAR(50) UNIQUE NOT NULL,
+    
+    -- BLM identifiers
+    blm_case_id VARCHAR(50) UNIQUE NOT NULL,  -- e.g., AZMC123456
     claim_name VARCHAR(255),
-    claim_type VARCHAR(50),
-    claimant VARCHAR(255),
-    location_date DATE,
-    expiration_date DATE,
-    close_date DATE,
+    serial_number VARCHAR(50),
+    
+    -- Classification
+    claim_type VARCHAR(50),  -- LODE, PLACER, MILLSITE, TUNNEL SITE
+    case_disposition VARCHAR(50),  -- ACTIVE, CLOSED, ABANDONED, VOID
+    
+    -- Claimant information
+    claimant_name VARCHAR(255),
+    claimant_address TEXT,
+    
+    -- Location (PLSS - Public Land Survey System)
+    state VARCHAR(2) DEFAULT 'AZ',
     county VARCHAR(100),
     township VARCHAR(20),
     range VARCHAR(20),
     section VARCHAR(20),
-    meridian VARCHAR(50),
-    state VARCHAR(2) DEFAULT 'AZ',
-    acres NUMERIC(10,2),
-    commodity VARCHAR(255),
-    status VARCHAR(50),
-    reason_expired TEXT,
+    meridian VARCHAR(50) DEFAULT 'GILA & SALT RIVER',
+    
+    -- Coordinates (derived or from BLM)
+    latitude NUMERIC(10,6),
+    longitude NUMERIC(10,6),
     geometry GEOMETRY(Geometry, 4326),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Create table for active mining claims
-CREATE TABLE active_mining_claims (
-    id SERIAL PRIMARY KEY,
-    claim_id VARCHAR(50) UNIQUE NOT NULL,
-    claim_name VARCHAR(255),
-    claim_type VARCHAR(50),
-    claimant VARCHAR(255),
+    
+    -- Claim details
+    acreage NUMERIC(10,2),
+    commodity VARCHAR(255),
+    
+    -- Dates
     location_date DATE,
+    recording_date DATE,
+    close_date DATE,
     last_assessment_date DATE,
-    county VARCHAR(100),
-    township VARCHAR(20),
-    range VARCHAR(20),
-    section VARCHAR(20),
-    meridian VARCHAR(50),
-    state VARCHAR(2) DEFAULT 'AZ',
-    acres NUMERIC(10,2),
-    commodity VARCHAR(255),
-    status VARCHAR(50),
-    geometry GEOMETRY(Geometry, 4326),
+    
+    -- Fee status
+    maintenance_fee_paid BOOLEAN DEFAULT FALSE,
+    last_fee_year INTEGER,
+    
+    -- Notes and descriptions
+    notes TEXT,
+    reason_closed TEXT,
+    
+    -- Data provenance (critical for operational system)
+    source_system VARCHAR(100) NOT NULL DEFAULT 'MLRS',  -- MLRS, LR2000, MANUAL
+    source_record_id VARCHAR(100),  -- Original ID in source system
+    source_url VARCHAR(1024),  -- Link to official record
+    source_retrieved_at TIMESTAMP,
+    is_verified BOOLEAN DEFAULT FALSE,  -- Has been verified against source
+    
+    -- Metadata
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create table for historical claims
-CREATE TABLE historical_claims (
+-- Claim history/events table
+CREATE TABLE claim_history (
     id SERIAL PRIMARY KEY,
-    claim_id VARCHAR(50),
-    claim_name VARCHAR(255),
-    claim_type VARCHAR(50),
-    claimant VARCHAR(255),
-    location_date DATE,
-    close_date DATE,
-    county VARCHAR(100),
-    township VARCHAR(20),
-    range VARCHAR(20),
-    section VARCHAR(20),
-    meridian VARCHAR(50),
-    state VARCHAR(2) DEFAULT 'AZ',
-    source VARCHAR(255),
-    source_date DATE,
-    notes TEXT,
-    geometry GEOMETRY(Geometry, 4326),
+    claim_id INTEGER REFERENCES mining_claims(id) ON DELETE CASCADE,
+    event_date DATE NOT NULL,
+    event_type VARCHAR(100),  -- LOCATED, FEE_PAID, ASSESSMENT_FILED, CLOSED, etc.
+    event_description TEXT,
+    source_document VARCHAR(255),
+    source_url VARCHAR(1024),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create table for claim documents
+-- Claim documents table
 CREATE TABLE claim_documents (
     id SERIAL PRIMARY KEY,
-    claim_id VARCHAR(50) REFERENCES expired_mining_claims(claim_id),
-    document_type VARCHAR(100),
+    claim_id INTEGER REFERENCES mining_claims(id) ON DELETE CASCADE,
+    document_type VARCHAR(100),  -- LOCATION_NOTICE, PROOF_OF_LABOR, ASSESSMENT, etc.
+    document_name VARCHAR(255),
     document_date DATE,
     document_url VARCHAR(1024),
-    document_text TEXT,
+    file_type VARCHAR(20),  -- PDF, TIF, JPG, etc.
+    is_available BOOLEAN DEFAULT TRUE,
+    source_system VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create table for data refresh logs
-CREATE TABLE data_refresh_logs (
+-- Claim images/maps table
+CREATE TABLE claim_images (
     id SERIAL PRIMARY KEY,
-    start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    end_time TIMESTAMP,
-    status VARCHAR(50),
-    records_processed INTEGER,
-    new_records INTEGER,
-    updated_records INTEGER,
-    error_message TEXT,
-    source VARCHAR(255)
+    claim_id INTEGER REFERENCES mining_claims(id) ON DELETE CASCADE,
+    image_type VARCHAR(100),  -- SITE_PHOTO, PLAT_MAP, SURVEY, etc.
+    image_name VARCHAR(255),
+    image_date DATE,
+    image_url VARCHAR(1024),
+    thumbnail_url VARCHAR(1024),
+    source_system VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create spatial indices
-CREATE INDEX expired_claims_geom_idx ON expired_mining_claims USING GIST(geometry);
-CREATE INDEX active_claims_geom_idx ON active_mining_claims USING GIST(geometry);
-CREATE INDEX historical_claims_geom_idx ON historical_claims USING GIST(geometry);
+-- Source links table (external references)
+CREATE TABLE claim_source_links (
+    id SERIAL PRIMARY KEY,
+    claim_id INTEGER REFERENCES mining_claims(id) ON DELETE CASCADE,
+    link_type VARCHAR(100),  -- BLM_RECORD, COUNTY_RECORD, USGS, etc.
+    link_name VARCHAR(255),
+    link_url VARCHAR(1024) NOT NULL,
+    is_verified BOOLEAN DEFAULT FALSE,
+    last_verified_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Data refresh/ingestion logs
+CREATE TABLE data_refresh_logs (
+    id SERIAL PRIMARY KEY,
+    source_system VARCHAR(100) NOT NULL,
+    start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    end_time TIMESTAMP,
+    status VARCHAR(50),  -- RUNNING, COMPLETED, FAILED
+    records_processed INTEGER DEFAULT 0,
+    records_inserted INTEGER DEFAULT 0,
+    records_updated INTEGER DEFAULT 0,
+    records_failed INTEGER DEFAULT 0,
+    error_message TEXT,
+    notes TEXT
+);
+
+-- Create spatial index
+CREATE INDEX claims_geom_idx ON mining_claims USING GIST(geometry);
 
 -- Create indices for common query fields
-CREATE INDEX expired_claims_county_idx ON expired_mining_claims(county);
-CREATE INDEX expired_claims_township_range_idx ON expired_mining_claims(township, range);
-CREATE INDEX expired_claims_expiration_idx ON expired_mining_claims(expiration_date);
-CREATE INDEX active_claims_county_idx ON active_mining_claims(county);
-
--- Create view for all claims (active and expired)
-CREATE OR REPLACE VIEW all_mining_claims AS
-SELECT 
-    claim_id, 
-    claim_name, 
-    claim_type, 
-    claimant, 
-    location_date, 
-    county, 
-    township, 
-    range, 
-    section, 
-    'active' AS status, 
-    geometry 
-FROM 
-    active_mining_claims
-UNION ALL
-SELECT 
-    claim_id, 
-    claim_name, 
-    claim_type, 
-    claimant, 
-    location_date, 
-    county, 
-    township, 
-    range, 
-    section, 
-    'expired' AS status, 
-    geometry 
-FROM 
-    expired_mining_claims;
+CREATE INDEX claims_state_idx ON mining_claims(state);
+CREATE INDEX claims_county_idx ON mining_claims(county);
+CREATE INDEX claims_township_range_idx ON mining_claims(township, range);
+CREATE INDEX claims_disposition_idx ON mining_claims(case_disposition);
+CREATE INDEX claims_type_idx ON mining_claims(claim_type);
+CREATE INDEX claims_close_date_idx ON mining_claims(close_date);
+CREATE INDEX claims_blm_case_idx ON mining_claims(blm_case_id);
+CREATE INDEX claims_source_idx ON mining_claims(source_system);
 
 -- Function to update timestamps
 CREATE OR REPLACE FUNCTION update_timestamp()
@@ -160,23 +164,85 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
--- Triggers for updated_at timestamps
-CREATE TRIGGER update_expired_claims_timestamp 
-BEFORE UPDATE ON expired_mining_claims 
+-- Trigger for updated_at
+CREATE TRIGGER update_claims_timestamp 
+BEFORE UPDATE ON mining_claims 
 FOR EACH ROW EXECUTE PROCEDURE update_timestamp();
 
-CREATE TRIGGER update_active_claims_timestamp 
-BEFORE UPDATE ON active_mining_claims 
-FOR EACH ROW EXECUTE PROCEDURE update_timestamp();
+-- Function to create geometry from lat/lng
+CREATE OR REPLACE FUNCTION update_geometry()
+RETURNS TRIGGER AS $$
+BEGIN
+   IF NEW.latitude IS NOT NULL AND NEW.longitude IS NOT NULL THEN
+      NEW.geometry = ST_SetSRID(ST_MakePoint(NEW.longitude, NEW.latitude), 4326);
+   END IF;
+   RETURN NEW;
+END;
+$$ language 'plpgsql';
 
--- Sample data for testing (optional)
-INSERT INTO expired_mining_claims (
-    claim_id, claim_name, claim_type, claimant, location_date, 
-    expiration_date, county, township, range, section, 
-    status, reason_expired, geometry
-) VALUES (
-    'AMC123456', 'SAMPLE CLAIM', 'LODE', 'JOHN DOE', '1995-05-15', 
-    '2005-09-01', 'MARICOPA', 'T5N', 'R3E', '14', 
-    'CLOSED', 'FAILURE TO PAY MAINTENANCE FEE', 
-    ST_GeomFromText('POINT(-112.0740 33.4484)', 4326)
+-- Trigger to auto-create geometry
+CREATE TRIGGER claims_geometry_trigger
+BEFORE INSERT OR UPDATE ON mining_claims
+FOR EACH ROW EXECUTE PROCEDURE update_geometry();
+
+-- View for API: claims with related counts
+CREATE OR REPLACE VIEW claims_with_stats AS
+SELECT 
+    c.*,
+    (SELECT COUNT(*) FROM claim_history h WHERE h.claim_id = c.id) as history_count,
+    (SELECT COUNT(*) FROM claim_documents d WHERE d.claim_id = c.id) as document_count,
+    (SELECT COUNT(*) FROM claim_images i WHERE i.claim_id = c.id) as image_count,
+    (SELECT COUNT(*) FROM claim_source_links s WHERE s.claim_id = c.id) as source_link_count
+FROM mining_claims c;
+
+-- Insert Arizona sample data with proper source attribution
+-- This is SAMPLE data for development - marked as unverified
+INSERT INTO mining_claims (
+    blm_case_id, claim_name, claim_type, claimant_name, case_disposition,
+    location_date, close_date, county, township, range, section, meridian,
+    latitude, longitude, acreage, commodity, maintenance_fee_paid,
+    notes, reason_closed, source_system, is_verified
+) VALUES 
+(
+    'AZMC123456', 'DESERT GOLD', 'LODE', 'ARIZONA MINERALS LLC', 'CLOSED',
+    '1995-06-12', '2010-09-01', 'MARICOPA', 'T5N', 'R3E', '14', 'GILA & SALT RIVER',
+    33.4484, -112.0740, 20.5, 'GOLD, SILVER', FALSE,
+    'Sample claim for development purposes', 'Failure to pay maintenance fees',
+    'SAMPLE', FALSE
+),
+(
+    'AZMC789012', 'GOLDEN HORIZON', 'PLACER', 'SMITH MINING CO', 'ABANDONED',
+    '2002-03-22', '2015-07-15', 'PIMA', 'T15S', 'R12E', '28', 'GILA & SALT RIVER',
+    32.1234, -111.7890, 40.0, 'GOLD', FALSE,
+    'Sample claim for development purposes', 'Abandoned by claimant',
+    'SAMPLE', FALSE
+),
+(
+    'AZMC345678', 'COPPER RIDGE', 'LODE', 'WESTERN COPPER INC', 'VOID',
+    '1988-11-05', '1999-12-31', 'YAVAPAI', 'T12N', 'R1W', '7', 'GILA & SALT RIVER',
+    34.5678, -112.4567, 20.0, 'COPPER', FALSE,
+    'Sample claim for development purposes', 'Voided due to defective location',
+    'SAMPLE', FALSE
 );
+
+-- Insert sample history
+INSERT INTO claim_history (claim_id, event_date, event_type, event_description)
+SELECT id, location_date, 'LOCATED', 'Claim located and recorded'
+FROM mining_claims WHERE blm_case_id = 'AZMC123456';
+
+INSERT INTO claim_history (claim_id, event_date, event_type, event_description)
+SELECT id, '1996-09-01', 'FEE_PAID', 'Annual maintenance fee paid'
+FROM mining_claims WHERE blm_case_id = 'AZMC123456';
+
+INSERT INTO claim_history (claim_id, event_date, event_type, event_description)
+SELECT id, close_date, 'CLOSED', 'Claim closed - maintenance fees not paid'
+FROM mining_claims WHERE blm_case_id = 'AZMC123456';
+
+-- Insert sample source links
+INSERT INTO claim_source_links (claim_id, link_type, link_name, link_url, is_verified)
+SELECT id, 'BLM_MLRS', 'BLM MLRS Record', 'https://mlrs.blm.gov/', FALSE
+FROM mining_claims WHERE source_system = 'SAMPLE';
+
+COMMENT ON TABLE mining_claims IS 'Main mining claims table - operational data from BLM MLRS. Check is_verified and source_system to determine data provenance.';
+COMMENT ON COLUMN mining_claims.is_verified IS 'TRUE if this record has been verified against the official BLM source';
+COMMENT ON COLUMN mining_claims.source_system IS 'Origin of this record: MLRS (official), LR2000 (legacy), SAMPLE (demo data), MANUAL (user entered)';

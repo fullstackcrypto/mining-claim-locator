@@ -1,57 +1,97 @@
 # Mining Claim Locator
 
-An application for locating expired and abandoned mining claims in Arizona using BLM data.
+An operational application for researching expired and abandoned mining claims in Arizona using BLM MLRS data.
+
+## Current Status
+
+**Architecture:** Operational (database-backed with sample data fallback)  
+**Coverage:** Arizona (first production target)  
+**Data Source:** BLM Mineral & Land Records System (MLRS)
+
+### Data Provenance
+
+| Source System | Description | Verification |
+|---------------|-------------|--------------|
+| `MLRS` | Official BLM MLRS records | ✓ Source-backed |
+| `LR2000` | Legacy BLM system records | ✓ Source-backed |
+| `SAMPLE` | Demo/development data | ✗ Not verified |
+| `MANUAL` | User-entered records | ✗ Not verified |
+
+The application clearly distinguishes between verified source-backed data and sample/demo data in both the UI and API responses via the `source_system` and `is_verified` fields.
 
 ## Features
-- Search BLM mining claims by location, status, and other parameters
-- Interactive map visualization of claim locations using Google Maps
-- **Rich claim details panel** with tabs for overview, history, documents, and images
-- Compatible with MLRS and LR2000 data formats
-- Works with Google Maps and USGS elevation data
-- Falls back to a built-in sample dataset when the API or map is unavailable
-- Responsive design: side panel on desktop, full-screen modal on mobile
 
-## Data Sources & Verification
+- **Real-time claim search** — Query by county, township/range/section, claim type, disposition, date range
+- **Interactive map visualization** — Google Maps with marker clustering for large datasets
+- **Rich claim details** — Tabbed panel with overview, history, documents, images, and source links
+- **Data provenance tracking** — Every record shows its source system and verification status
+- **Responsive design** — Desktop sidebar panel, mobile full-screen modal
+- **Graceful degradation** — Falls back to sample data when database is unavailable
 
-### Sample Data (Default)
-When no backend API is configured, the app displays **sample/demonstration data**. This data:
-- Is clearly labeled with a ⚠ warning indicator
-- Is NOT sourced from any official BLM records
-- Is intended only for demonstration purposes
-- Should NOT be used for legal or business decisions
+## Architecture
 
-### Verified Data (With API)
-When connected to a backend with real BLM data:
-- Data is sourced from BLM MLRS and LR2000 systems
-- Source links point to official BLM records where available
-- Documents and images are retrieved from verified sources
-- The `is_sample_data` flag will be `false` for verified records
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        Frontend                              │
+│         React + Google Maps (GitHub Pages)                  │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      Backend API                            │
+│              Express.js (Render/Railway/Fly)                │
+│                                                             │
+│  GET /api/health              GET /api/counties             │
+│  GET /api/claims/search       GET /api/claims/:id           │
+│  GET /api/claims/:id/history  GET /api/claims/:id/documents │
+│  GET /api/claims/stats/summary                              │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      Database                               │
+│              PostgreSQL + PostGIS                           │
+│                                                             │
+│  mining_claims        claim_history       claim_documents   │
+│  claim_images         claim_source_links  data_refresh_logs │
+└─────────────────────────────────────────────────────────────┘
+                              ▲
+                              │
+┌─────────────────────────────────────────────────────────────┐
+│                   Data Ingestion                            │
+│         Python scripts (MLRS scraper/parser)                │
+└─────────────────────────────────────────────────────────────┘
+```
 
-## Deploying from GitHub (recommended)
+## Deploying from GitHub
 
-### 1. Enable GitHub Pages
-In your repository go to **Settings → Pages → Source** and select
-**GitHub Actions**. The `deploy.yml` workflow will build the React frontend and
-publish it automatically on every push to `main`.
+### 1. Enable GitHub Pages (Frontend)
+In your repository go to **Settings → Pages → Source** and select **GitHub Actions**.
 
 ### 2. Set GitHub Secrets / Variables
 | Name | Where | Purpose |
 |------|-------|---------|
 | `GOOGLE_MAPS_API_KEY` | Repository **Secret** | Enables the interactive map |
-| `API_URL` | Repository **Variable** | Points the frontend at your deployed backend (e.g. `https://my-api.onrender.com/api`). Leave blank to use the built-in sample data. |
+| `API_URL` | Repository **Variable** | Backend API URL (e.g. `https://my-api.onrender.com/api`) |
 
-Create an API key at <https://console.cloud.google.com/apis/credentials> and
-restrict it to your GitHub Pages domain (`<user>.github.io`) for security.
+### 3. Deploy Backend to Render
+1. Sign up at <https://render.com> and connect your GitHub repository
+2. Render will detect `render.yaml` and create a **Web Service** automatically
+3. Add a **PostgreSQL** database from the Render dashboard
+4. Set environment variables:
+   - `DATABASE_URL` — Render provides this when you attach the database
+   - `ALLOWED_ORIGINS` — Your GitHub Pages URL (e.g. `https://user.github.io`)
+5. Run the database setup: `psql $DATABASE_URL < scripts/setup_database.sql`
 
-### 3. (Optional) Deploy the backend to Render
-1. Sign up at <https://render.com> and connect your GitHub repository.
-2. Render will detect `render.yaml` and create a **Web Service** for the backend automatically.
-3. In the Render dashboard set the `ALLOWED_ORIGINS` environment variable to your
-   GitHub Pages URL (e.g. `https://<user>.github.io`) and, if you have a
-   PostgreSQL database, set `DATABASE_URL`.
-4. Copy the service URL and paste it into the `API_URL` GitHub Variable in step 2.
+### 4. (Optional) Load Real Data
+Run the MLRS data ingestion script to populate the database with real Arizona claims:
+```bash
+cd scripts
+pip install -r requirements.txt
+python blm_fetcher.py --state AZ --output postgres
+```
 
-## Local development
+## Local Development
 
 ```bash
 # Backend (runs on http://localhost:3000)
@@ -59,14 +99,48 @@ cd backend && npm install && node server.js
 
 # Frontend (runs on http://localhost:3000 by default, or 3001 if 3000 is in use)
 cd frontend && npm install && npm start
+
+# Database (PostgreSQL with PostGIS)
+psql -c "CREATE DATABASE mining_claims;"
+psql -d mining_claims -f scripts/setup_database.sql
 ```
 
-Copy `frontend/.env.example` to `frontend/.env` and fill in your values before
-starting the frontend.
+Copy `frontend/.env.example` to `frontend/.env` and fill in your values before starting the frontend.
+
+## API Reference
+
+### GET /api/claims/search
+Search for mining claims with optional filters.
+
+**Query Parameters:**
+- `county` — Filter by Arizona county
+- `township` — Filter by township (e.g., T5N)
+- `range` — Filter by range (e.g., R3E)
+- `section` — Filter by section number
+- `claim_type` — LODE, PLACER, MILLSITE, TUNNEL SITE
+- `case_disposition` — ACTIVE, CLOSED, ABANDONED, VOID
+- `date_from` / `date_to` — Filter by close date range
+- `claimant` — Search by claimant name (partial match)
+- `limit` / `offset` — Pagination (default: 100 records)
+
+### GET /api/claims/:id
+Get full claim details including history, documents, images, and source links.
+
+### GET /api/claims/stats/summary
+Get database statistics and coverage information.
 
 ## Technologies
-- **Backend**: Node.js, Express, PostgreSQL (optional – not required for sample data)
-- **Frontend**: React, Google Maps JavaScript API
-- **Data**: BLM MLRS/LR2000 mining claim records
-- **CI/CD**: GitHub Actions → GitHub Pages (frontend), Render (backend)
+
+- **Frontend:** React, Google Maps JavaScript API
+- **Backend:** Node.js, Express
+- **Database:** PostgreSQL, PostGIS
+- **Data Sources:** BLM MLRS, BLM LR2000 (legacy)
+- **CI/CD:** GitHub Actions → GitHub Pages (frontend), Render (backend)
+
+## Limitations
+
+- **Geographic Coverage:** Currently Arizona only (expanding)
+- **Data Currency:** Depends on ingestion frequency; check `data_refresh_logs`
+- **Verification:** Only `MLRS` and `LR2000` sourced records are verified
+- **Documents/Images:** Many historical documents are not digitized
 

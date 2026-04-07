@@ -3,6 +3,17 @@ import api from './services/api';
 import './styles/App.css';
 
 /**
+ * Helper to check if a claim is sample/unverified data.
+ * Supports both old (is_sample_data) and new (source_system, is_verified) field names.
+ */
+function isSampleData(claim) {
+  if (claim.is_sample_data === true) return true;
+  if (claim.source_system === 'SAMPLE') return true;
+  if (claim.is_verified === false && claim.source_system !== 'MLRS' && claim.source_system !== 'LR2000') return true;
+  return false;
+}
+
+/**
  * SAMPLE DATA — Mock/example data for demonstration.
  * This data is NOT sourced from BLM or any verified record system.
  * When a backend API is configured, real data will replace this.
@@ -27,22 +38,20 @@ const SAMPLE_CLAIMS = [
     acreage: 20.5,
     commodity: 'GOLD, SILVER',
     maintenance_fee_paid: false,
-    notes: 'Claim closed due to failure to pay maintenance fees',
+    notes: 'Sample claim for development purposes',
+    reason_closed: 'Failure to pay maintenance fees',
+    source_system: 'SAMPLE',
+    is_verified: false,
     history: [
-      { date: '1995-06-12', event: 'Claim located' },
-      { date: '1996-09-01', event: 'Annual maintenance fee paid' },
-      { date: '2009-09-01', event: 'Final maintenance fee paid' },
-      { date: '2010-09-01', event: 'Claim closed - fees not paid' }
+      { event_date: '1995-06-12', event_type: 'LOCATED', event_description: 'Claim located and recorded' },
+      { event_date: '1996-09-01', event_type: 'FEE_PAID', event_description: 'Annual maintenance fee paid' },
+      { event_date: '2010-09-01', event_type: 'CLOSED', event_description: 'Claim closed - fees not paid' }
     ],
-    documents: [
-      { name: 'Location Notice', type: 'PDF', url: null },
-      { name: 'Proof of Labor 1996', type: 'PDF', url: null }
-    ],
+    documents: [],
     images: [],
     source_links: [
-      { name: 'BLM LR2000 Record', url: 'https://reports.blm.gov/reports.cfm?application=LR2000' }
-    ],
-    is_sample_data: true
+      { link_type: 'BLM_MLRS', link_name: 'BLM MLRS Record', link_url: 'https://mlrs.blm.gov/', is_verified: false }
+    ]
   },
   {
     id: 2,
@@ -63,15 +72,17 @@ const SAMPLE_CLAIMS = [
     acreage: 40.0,
     commodity: 'GOLD',
     maintenance_fee_paid: false,
-    notes: 'Claim abandoned by claimant',
+    notes: 'Sample claim for development purposes',
+    reason_closed: 'Abandoned by claimant',
+    source_system: 'SAMPLE',
+    is_verified: false,
     history: [
-      { date: '2002-03-22', event: 'Claim located' },
-      { date: '2015-07-15', event: 'Claim abandoned' }
+      { event_date: '2002-03-22', event_type: 'LOCATED', event_description: 'Claim located' },
+      { event_date: '2015-07-15', event_type: 'ABANDONED', event_description: 'Claim abandoned' }
     ],
     documents: [],
     images: [],
-    source_links: [],
-    is_sample_data: true
+    source_links: []
   },
   {
     id: 3,
@@ -92,21 +103,19 @@ const SAMPLE_CLAIMS = [
     acreage: 20.0,
     commodity: 'COPPER',
     maintenance_fee_paid: false,
-    notes: 'Claim voided due to defective location',
+    notes: 'Sample claim for development purposes',
+    reason_closed: 'Voided due to defective location',
+    source_system: 'SAMPLE',
+    is_verified: false,
     history: [
-      { date: '1988-11-05', event: 'Claim located' },
-      { date: '1999-12-31', event: 'Claim voided' }
+      { event_date: '1988-11-05', event_type: 'LOCATED', event_description: 'Claim located' },
+      { event_date: '1999-12-31', event_type: 'VOID', event_description: 'Claim voided' }
     ],
-    documents: [
-      { name: 'Original Location Notice', type: 'PDF', url: null }
-    ],
-    images: [
-      { name: 'Site Photo 1989', url: null, thumbnail: null }
-    ],
+    documents: [],
+    images: [],
     source_links: [
-      { name: 'BLM LR2000 Record', url: 'https://reports.blm.gov/reports.cfm?application=LR2000' }
-    ],
-    is_sample_data: true
+      { link_type: 'BLM_MLRS', link_name: 'BLM MLRS Record', link_url: 'https://mlrs.blm.gov/', is_verified: false }
+    ]
   }
 ];
 
@@ -175,7 +184,7 @@ function createInfoContent(claim, onViewDetails) {
   
   container.appendChild(actions);
   
-  if (claim.is_sample_data) {
+  if (isSampleData(claim)) {
     const sampleNote = document.createElement('div');
     sampleNote.style.cssText = 'font-size: 10px; color: #999; margin-top: 8px; text-align: center;';
     sampleNote.textContent = '⚠ Sample data - not verified';
@@ -240,7 +249,7 @@ function ClaimDetailsPanel({ claim, onClose }) {
       </div>
       
       {/* Sample data warning */}
-      {claim.is_sample_data && (
+      {isSampleData(claim) && (
         <div style={{
           padding: '8px 16px',
           backgroundColor: '#fff3cd',
@@ -415,10 +424,10 @@ function ClaimDetailsPanel({ claim, onClose }) {
               </button>
               
               {hasSourceLinks && claim.source_links.map((link, idx) => (
-                link.url ? (
+                (link.link_url || link.url) ? (
                   <a
                     key={idx}
-                    href={link.url}
+                    href={link.link_url || link.url}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{
@@ -432,7 +441,7 @@ function ClaimDetailsPanel({ claim, onClose }) {
                       textDecoration: 'none'
                     }}
                   >
-                    Open {link.name}
+                    Open {link.link_name || link.name}
                   </a>
                 ) : (
                   <button
@@ -447,7 +456,7 @@ function ClaimDetailsPanel({ claim, onClose }) {
                       cursor: 'not-allowed'
                     }}
                   >
-                    {link.name} (unavailable)
+                    {link.link_name || link.name} (unavailable)
                   </button>
                 )
               ))}
@@ -466,8 +475,11 @@ function ClaimDetailsPanel({ claim, onClose }) {
                   marginBottom: '8px',
                   backgroundColor: '#f8f9fa'
                 }}>
-                  <strong>{event.date}</strong>
-                  <p style={{ margin: '4px 0 0 0' }}>{event.event}</p>
+                  <strong>{event.event_date || event.date}</strong>
+                  <span style={{ marginLeft: '8px', color: '#666', fontSize: '12px' }}>
+                    {event.event_type}
+                  </span>
+                  <p style={{ margin: '4px 0 0 0' }}>{event.event_description || event.event}</p>
                 </li>
               ))}
             </ul>
@@ -489,11 +501,11 @@ function ClaimDetailsPanel({ claim, onClose }) {
                   alignItems: 'center'
                 }}>
                   <div>
-                    <strong>{doc.name}</strong>
-                    <span style={{ marginLeft: '8px', fontSize: '12px', color: '#666' }}>{doc.type}</span>
+                    <strong>{doc.document_name || doc.name}</strong>
+                    <span style={{ marginLeft: '8px', fontSize: '12px', color: '#666' }}>{doc.file_type || doc.type}</span>
                   </div>
-                  {doc.url ? (
-                    <a href={doc.url} target="_blank" rel="noopener noreferrer" style={{ color: '#3498db' }}>
+                  {(doc.document_url || doc.url) ? (
+                    <a href={doc.document_url || doc.url} target="_blank" rel="noopener noreferrer" style={{ color: '#3498db' }}>
                       Download
                     </a>
                   ) : (
@@ -509,17 +521,17 @@ function ClaimDetailsPanel({ claim, onClose }) {
           <div>
             <h3 style={{ marginTop: 0 }}>Maps & Images</h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
-              {claim.images.map((img, idx) => (
+                {claim.images.map((img, idx) => (
                 <div key={idx} style={{
                   border: '1px solid #ddd',
                   borderRadius: '4px',
                   padding: '8px',
                   textAlign: 'center'
                 }}>
-                  {img.url ? (
+                  {(img.image_url || img.url) ? (
                     <img 
-                      src={img.thumbnail || img.url} 
-                      alt={img.name}
+                      src={img.thumbnail_url || img.thumbnail || img.image_url || img.url} 
+                      alt={img.image_name || img.name}
                       style={{ maxWidth: '100%', borderRadius: '4px' }}
                     />
                   ) : (
@@ -534,7 +546,7 @@ function ClaimDetailsPanel({ claim, onClose }) {
                       No preview
                     </div>
                   )}
-                  <p style={{ margin: '8px 0 0 0', fontSize: '12px' }}>{img.name}</p>
+                  <p style={{ margin: '8px 0 0 0', fontSize: '12px' }}>{img.image_name || img.name}</p>
                 </div>
               ))}
             </div>
@@ -737,7 +749,7 @@ function App() {
 
             <div style={{ padding: '1rem' }}>
               <h2>Claims Found: {claims.length}</h2>
-              {claims.some(c => c.is_sample_data) && (
+              {claims.some(c => isSampleData(c)) && (
                 <p style={{ 
                   color: '#856404', 
                   backgroundColor: '#fff3cd', 
