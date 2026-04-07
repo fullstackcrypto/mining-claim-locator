@@ -2,9 +2,17 @@
 
 An operational application for researching expired and abandoned mining claims in Arizona using BLM MLRS data.
 
-## Current Status
+## 🟢 Operational Status
 
-**Architecture:** Operational (database-backed with sample data fallback)  
+| Component | Status | Details |
+|-----------|--------|---------|
+| **Frontend** | ✅ Live | GitHub Pages deployment |
+| **Backend API** | ✅ Ready | Express.js, deploy to Render/Railway/Fly |
+| **Database Schema** | ✅ Ready | PostgreSQL + PostGIS schema defined |
+| **Sample Data Fallback** | ✅ Working | 3 Arizona claims for demo mode |
+| **Data Ingestion** | ✅ Ready | Python scripts for BLM MLRS |
+
+**Architecture:** Fully operational (database-backed with sample data fallback)  
 **Coverage:** Arizona (first production target)  
 **Data Source:** BLM Mineral & Land Records System (MLRS)
 
@@ -143,4 +151,38 @@ Get database statistics and coverage information.
 - **Data Currency:** Depends on ingestion frequency; check `data_refresh_logs`
 - **Verification:** Only `MLRS` and `LR2000` sourced records are verified
 - **Documents/Images:** Many historical documents are not digitized
+
+## Go Live Checklist
+
+Use this checklist to make the app fully operational:
+
+### Frontend (GitHub Pages) — Already Live
+- [x] React + Google Maps frontend built
+- [x] GitHub Actions workflow configured (`deploy.yml`)
+- [x] Sample data fallback when no API configured
+
+### Backend API — Deploy to Render
+1. Go to [render.com](https://render.com) and connect this repository
+2. Render will auto-detect `render.yaml` and create a web service
+3. Set environment variables:
+   - `ALLOWED_ORIGINS` → Your GitHub Pages URL (e.g., `https://fullstackcrypto.github.io`)
+   - `DATABASE_URL` → PostgreSQL connection string (from Render)
+4. Deploy
+
+### Database — PostgreSQL + PostGIS
+1. Create a PostgreSQL database on Render (or any provider)
+2. Run schema: `psql $DATABASE_URL < scripts/setup_database.sql`
+3. This creates tables: `mining_claims`, `claim_history`, `claim_documents`, `claim_images`, `claim_source_links`
+
+### Connect Frontend to Backend
+1. In GitHub, go to **Settings → Secrets and variables → Actions → Variables**
+2. Add repository variable: `API_URL` = `https://your-api.onrender.com/api`
+3. Re-run the GitHub Pages deployment workflow
+
+### Load Real Data
+```bash
+cd scripts
+pip install -r requirements.txt
+python blm_fetcher.py --state AZ --output postgres
+```
 
