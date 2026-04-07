@@ -94,7 +94,7 @@ function buildWhereClause(params = {}) {
 
 /**
  * Fetch claims from the BLM ArcGIS REST API.
- * Retrieves up to 1 000 features per request.
+ * Retrieves up to 1,000 features per request.
  * Returns null if the request fails (CORS, timeout, server error, etc.).
  */
 async function fetchFromBlm(params = {}) {
