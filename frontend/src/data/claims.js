@@ -1,6 +1,7 @@
-// Sample BLM mining claim records embedded from backend/routes/claims.js.
-// No backend server is required — all filtering is performed in the browser.
-const CLAIMS = [
+import blmData from './blm_claims.json';
+
+// Hardcoded fallback — used only when blm_claims.json is empty or unavailable.
+const SAMPLE_CLAIMS = [
   {
     id: 1,
     blm_case_id: 'AZMC123456',
@@ -107,5 +108,14 @@ const CLAIMS = [
     notes: null
   }
 ];
+
+// Use pre-fetched BLM data when available, otherwise fall back to samples.
+const CLAIMS =
+  blmData && Array.isArray(blmData.data) && blmData.data.length > 0
+    ? blmData.data
+    : SAMPLE_CLAIMS;
+
+export const CLAIMS_METADATA =
+  blmData && blmData.metadata ? blmData.metadata : null;
 
 export default CLAIMS;
