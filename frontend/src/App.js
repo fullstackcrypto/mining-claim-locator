@@ -1,7 +1,9 @@
 import React, { useState, useCallback, useRef } from 'react';
+import { Routes, Route, Link } from 'react-router-dom';
 import SearchPanel from './components/SearchPanel';
 import MapView from './components/MapView';
 import ClaimsList from './components/ClaimsList';
+import PlanScreen from './components/PlanScreen';
 import api from './services/api';
 import './styles/App.css';
 
@@ -35,13 +37,11 @@ function App() {
     }
   }, []);
 
-  // Called when user clicks "View on Map" inside a ClaimsList card
   const handleViewOnMap = useCallback((claim) => {
     setSelectedClaimId(claim.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  // Called when user clicks "View Details" in a map popup
   const handleViewDetails = useCallback((claimId) => {
     setSelectedClaimId(claimId);
     if (claimsListRef.current) {
@@ -49,7 +49,6 @@ function App() {
     }
   }, []);
 
-  // Called when a card is expanded in the list (keeps map in sync)
   const handleSelectClaim = useCallback((claimId) => {
     setSelectedClaimId(claimId);
   }, []);
@@ -61,45 +60,66 @@ function App() {
           <span role="img" aria-label="pickaxe">⛏️</span>
           <h1>Mining Claim Locator</h1>
         </div>
-        <span className="app-subtitle">Arizona BLM Expired &amp; Abandoned Claims</span>
+        <span className="app-subtitle">Arizona BLM Expired & Abandoned Claims</span>
+        <nav style={{ marginLeft: 'auto', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <Link to="/" style={{ color: '#fff', textDecoration: 'none' }}>Home</Link>
+          <Link 
+            to="/plans" 
+            style={{
+              backgroundColor: '#3b82f6',
+              color: '#fff',
+              padding: '8px 16px',
+              borderRadius: '9999px',
+              textDecoration: 'none',
+              fontWeight: '600'
+            }}
+          >
+            Choose Plan
+          </Link>
+        </nav>
       </header>
 
-      <main className="app-content">
-        <SearchPanel onSearch={handleSearch} loading={loading} />
+      <Routes>
+        <Route path="/" element={
+          <main className="app-content">
+            <SearchPanel onSearch={handleSearch} loading={loading} />
 
-        <div className="map-area">
-          {!searched && !loading && (
-            <div className="empty-state">
-              <p>Use the search panel to find expired mining claims.</p>
-            </div>
-          )}
-          {(searched || loading) && (
-            <>
-              {apiNotice && (
-                <div className="api-notice" role="status">
-                  {apiNotice}
+            <div className="map-area">
+              {!searched && !loading && (
+                <div className="empty-state">
+                  <p>Use the search panel to find expired mining claims.</p>
                 </div>
               )}
-              <MapView
-                claims={claims}
-                loading={loading}
-                error={error}
-                selectedClaimId={selectedClaimId}
-                onViewDetails={handleViewDetails}
-              />
-              <div ref={claimsListRef}>
-                <ClaimsList
-                  claims={claims}
-                  loading={loading}
-                  selectedClaimId={selectedClaimId}
-                  onSelectClaim={handleSelectClaim}
-                  onViewOnMap={handleViewOnMap}
-                />
-              </div>
-            </>
-          )}
-        </div>
-      </main>
+              {(searched || loading) && (
+                <>
+                  {apiNotice && (
+                    <div className="api-notice" role="status">
+                      {apiNotice}
+                    </div>
+                  )}
+                  <MapView
+                    claims={claims}
+                    loading={loading}
+                    error={error}
+                    selectedClaimId={selectedClaimId}
+                    onViewDetails={handleViewDetails}
+                  />
+                  <div ref={claimsListRef}>
+                    <ClaimsList
+                      claims={claims}
+                      loading={loading}
+                      selectedClaimId={selectedClaimId}
+                      onSelectClaim={handleSelectClaim}
+                      onViewOnMap={handleViewOnMap}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          </main>
+        } />
+        <Route path="/plans" element={<PlanScreen />} />
+      </Routes>
 
       <footer className="app-footer">
         <p>
