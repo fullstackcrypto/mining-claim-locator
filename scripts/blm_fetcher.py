@@ -1,19 +1,32 @@
 #!/usr/bin/env python3
 """
-BLM Mining Claim Data Fetcher
-Retrieves and processes mining claim data from Bureau of Land Management for Arizona
+BLM Mining Claim Data Fetcher (Python version)
+
+Retrieves and processes mining claim data from Bureau of Land Management
+official open-data ArcGIS REST services for Arizona.
+
+Data Sources (all open, public domain, no API key required):
+  1. BLM NLSDB Mining Claims MapServer — Closed Mining Claims (Layer 2)
+     Polygon geometry derived from PLSS legal land descriptions
+  2. BLM HUB MLRS Mining Claims Closed — Recently modified claims
+  3. BLM PLSS CadNSDI — Township/Range/Section grid reference
+
+Usage:
+  pip install -r requirements.txt
+  python blm_fetcher.py [--output ../frontend/src/data/blm_claims.json]
 """
 
 import os
+import sys
 import json
 import time
 import logging
+import argparse
 from datetime import datetime
-import pandas as pd
+from pathlib import Path
+
 import requests
-from bs4 import BeautifulSoup
-import geopandas as gpd
-from sqlalchemy import create_engine
+import pandas as pd
 
 # Setup logging
 logging.basicConfig(
@@ -23,260 +36,317 @@ logging.basicConfig(
 )
 logger = logging.getLogger("blm_fetcher")
 
-# Configuration
-BLM_LR2000_URL = "https://reports.blm.gov/reports.cfm?application=LR2000"
-BLM_MLRS_API = "https://mlrs.blm.gov/api/v1"
-ARIZONA_STATE_CODE = "04"
-DATA_DIR = "../data"
-os.makedirs(DATA_DIR, exist_ok=True)
+# ---------------------------------------------------------------------------
+# BLM ArcGIS REST endpoints (open public domain)
+# ---------------------------------------------------------------------------
+
+# Primary: NLSDB Mining Claims — Layer 2 = Closed Mining Claims
+PRIMARY_ENDPOINT = (
+    "https://gis.blm.gov/nlsdb/rest/services/"
+    "Mining_Claims/MiningClaims/MapServer/2/query"
+)
+
+# Secondary: HUB Closed Claims (recently modified within last year)
+SECONDARY_ENDPOINT = (
+    "https://gis.blm.gov/nlsdb/rest/services/"
+    "HUB/BLM_Natl_MLRS_Mining_Claims_Closed/MapServer/0/query"
+)
+
+# Active Mining Claims — Layer 1
+ACTIVE_ENDPOINT = (
+    "https://gis.blm.gov/nlsdb/rest/services/"
+    "Mining_Claims/MiningClaims/MapServer/1/query"
+)
+
+ARIZONA_STATE_CODE = "AZ"
+RECORD_COUNT = 2000
+REQUEST_TIMEOUT = 45
+DEFAULT_OUTPUT = Path(__file__).parent.parent / "frontend" / "src" / "data" / "blm_claims.json"
+
 
 class BLMDataFetcher:
-    """Handles retrieval of BLM mining claim data focused on Arizona"""
-    
-    def __init__(self):
-        self.session = requests.Session()
-        self.claims_data = None
-        
-    def fetch_current_claims(self):
-        """Fetch current active claims from MLRS API"""
-        logger.info("Fetching current claims from MLRS API")
-        
-        try:
-            # This is a placeholder - actual API endpoint needs to be confirmed
-            # BLM often requires registration for API access
-            url = f"{BLM_MLRS_API}/mining/claims?state={ARIZONA_STATE_CODE}"
-            response = self.session.get(url)
-            response.raise_for_status()
-            
-            data = response.json()
-            logger.info(f"Retrieved {len(data['features'])} current claims")
-            
-            # Save raw data
-            with open(f"{DATA_DIR}/current_claims_raw.json", "w") as f:
-                json.dump(data, f)
-                
-            # Convert to GeoDataFrame if the data contains geometry
-            if 'features' in data:
-                gdf = gpd.GeoDataFrame.from_features(data['features'])
-                gdf.to_file(f"{DATA_DIR}/current_claims.geojson", driver="GeoJSON")
-                self.claims_data = gdf
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error fetching current claims: {str(e)}")
-            # Fallback to legacy data method if API fails
-            return self.fetch_legacy_lr2000_data()
-    
-    def fetch_legacy_lr2000_data(self):
-        """
-        Fetch mining claim data from legacy LR2000 system
-        This is a fallback method using web scraping
-        """
-        logger.info("Attempting to fetch data from legacy LR2000 system")
-        
-        try:
-            # First get the search form
-            response = self.session.get(BLM_LR2000_URL)
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Extract form data and prepare for search
-            # This is simplified - actual implementation needs to handle complex form
-            form_data = {
-                'state_code': ARIZONA_STATE_CODE,
-                'county_code': '',  # All counties
-                'report_type': 'MC_CLAIM_RPT',
-                'sort_by': 'CASE_NBR'
-            }
-            
-            # Submit form and get results
-            response = self.session.post(BLM_LR2000_URL, data=form_data)
-            
-            # Parse and process results
-            # This would need significant customization based on actual response format
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Extract table data
-            table_data = []
-            tables = soup.find_all('table')
-            for table in tables:
-                rows = table.find_all('tr')
-                for row in rows:
-                    cols = row.find_all('td')
-                    if cols:
-                        table_data.append([col.text.strip() for col in cols])
-            
-            # Convert to dataframe
-            if table_data:
-                df = pd.DataFrame(table_data)
-                df.to_csv(f"{DATA_DIR}/legacy_claims.csv", index=False)
-                logger.info(f"Saved {len(df)} legacy claims to CSV")
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error fetching legacy data: {str(e)}")
-            return False
-    
-    def fetch_historical_archives(self):
-        """
-        Fetch historical mining claim data from archives
-        This requires accessing historical records which may be in different formats
-        """
-        logger.info("Fetching historical archives")
-        
-        # Sources of historical data:
-        # 1. Arizona State Library, Archives and Public Records
-        # 2. University of Arizona Mining Archives
-        # 3. BLM Historical Records
-        
-        sources = [
-            "https://azlibrary.gov/archives",
-            "https://www.library.arizona.edu/archives/miners",
-            "https://glorecords.blm.gov/",
-        ]
-        
-        historical_data = []
-        
-        for source in sources:
-            try:
-                logger.info(f"Accessing historical source: {source}")
-                # This is simplified - actual implementation would involve
-                # custom scraping logic for each source
-                response = self.session.get(source)
-                
-                # Process and extract relevant data
-                # This would be specific to each source format
-                
-                # Add to historical dataset
-                # historical_data.append(processed_data)
-                
-            except Exception as e:
-                logger.error(f"Error accessing historical source {source}: {str(e)}")
-        
-        if historical_data:
-            # Combine and save historical data
-            with open(f"{DATA_DIR}/historical_claims.json", "w") as f:
-                json.dump(historical_data, f)
-            
-        return True
-    
-    def identify_expired_claims(self):
-        """
-        Process all claim data to identify expired/abandoned claims
-        Uses maintenance fee records and claim status
-        """
-        logger.info("Identifying expired and abandoned claims")
-        
-        # Load current and historical data
-        current_file = f"{DATA_DIR}/current_claims.geojson"
-        legacy_file = f"{DATA_DIR}/legacy_claims.csv"
-        
-        if os.path.exists(current_file):
-            current_claims = gpd.read_file(current_file)
-        else:
-            current_claims = gpd.GeoDataFrame()
-        
-        if os.path.exists(legacy_file):
-            legacy_claims = pd.read_csv(legacy_file)
-        else:
-            legacy_claims = pd.DataFrame()
-        
-        # Combine datasets
-        # This would need customization based on actual data structure
-        
-        # Identify expired claims based on:
-        # 1. Missing annual maintenance fee payments
-        # 2. Explicit "closed" or "abandoned" status
-        # 3. Claims with expiration dates in the past
-        
-        # Example logic (placeholder)
-        expired_claims = pd.DataFrame()
-        
-        # Save expired claims
-        if not expired_claims.empty:
-            expired_claims.to_csv(f"{DATA_DIR}/expired_claims.csv", index=False)
-            logger.info(f"Identified {len(expired_claims)} expired claims")
-        
-        return True
-    
-    def export_to_geojson(self):
-        """Convert expired claims to GeoJSON format for mapping"""
-        expired_file = f"{DATA_DIR}/expired_claims.csv"
-        
-        if not os.path.exists(expired_file):
-            logger.warning("No expired claims file found")
-            return False
-        
-        try:
-            df = pd.read_csv(expired_file)
-            
-            # Convert to GeoDataFrame
-            # This assumes the CSV has latitude/longitude columns
-            # Adjust based on actual data structure
-            gdf = gpd.GeoDataFrame(
-                df, 
-                geometry=gpd.points_from_xy(df.longitude, df.latitude),
-                crs="EPSG:4326"
-            )
-            
-            # Save as GeoJSON
-            gdf.to_file(f"{DATA_DIR}/expired_claims.geojson", driver="GeoJSON")
-            logger.info("Exported expired claims to GeoJSON")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error exporting to GeoJSON: {str(e)}")
-            return False
-    
-    def load_to_database(self, db_connection_string):
-        """Load processed data to PostgreSQL/PostGIS database"""
-        logger.info("Loading data to database")
-        
-        try:
-            engine = create_engine(db_connection_string)
-            
-            # Load expired claims
-            expired_file = f"{DATA_DIR}/expired_claims.geojson"
-            if os.path.exists(expired_file):
-                gdf = gpd.read_file(expired_file)
-                gdf.to_postgis("expired_mining_claims", engine, if_exists="replace")
-                logger.info(f"Loaded {len(gdf)} expired claims to database")
-            
-            # Load current claims
-            current_file = f"{DATA_DIR}/current_claims.geojson"
-            if os.path.exists(current_file):
-                gdf = gpd.read_file(current_file)
-                gdf.to_postgis("active_mining_claims", engine, if_exists="replace")
-                logger.info(f"Loaded {len(gdf)} active claims to database")
-                
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error loading to database: {str(e)}")
-            return False
+    """Handles retrieval of BLM mining claim data from official open-data services."""
 
-    def run_full_process(self, db_connection=None):
-        """Run the complete data fetching and processing pipeline"""
-        logger.info("Starting full BLM data processing pipeline")
-        
-        # Fetch all data sources
-        self.fetch_current_claims()
-        self.fetch_historical_archives()
-        
-        # Process to identify expired claims
-        self.identify_expired_claims()
-        
-        # Export for visualization
-        self.export_to_geojson()
-        
-        # Load to database if connection provided
-        if db_connection:
-            self.load_to_database(db_connection)
-        
-        logger.info("BLM data processing pipeline complete")
-        return True
+    def __init__(self, output_path=None):
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'MiningClaimLocator/2.0 (open-source research tool)'
+        })
+        self.output_path = Path(output_path) if output_path else DEFAULT_OUTPUT
+        self.primary_records = []
+        self.secondary_records = []
+
+    def fetch_paginated(self, endpoint, where_clause, label="source"):
+        """Fetch all records from a BLM ArcGIS endpoint with pagination."""
+        logger.info(f"[{label}] Fetching from: {endpoint}")
+        logger.info(f"[{label}] WHERE: {where_clause}")
+
+        all_features = []
+        offset = 0
+
+        while True:
+            params = {
+                'where': where_clause,
+                'outFields': '*',
+                'outSR': '4326',
+                'returnGeometry': 'true',
+                'resultRecordCount': RECORD_COUNT,
+                'resultOffset': offset,
+                'f': 'json'
+            }
+
+            try:
+                response = self.session.get(
+                    endpoint, params=params, timeout=REQUEST_TIMEOUT
+                )
+                response.raise_for_status()
+                data = response.json()
+            except requests.exceptions.RequestException as e:
+                logger.error(f"[{label}] Request error at offset {offset}: {e}")
+                if not all_features:
+                    raise
+                logger.warning(f"[{label}] Partial fetch — returning {len(all_features)} records")
+                break
+            except json.JSONDecodeError as e:
+                logger.error(f"[{label}] JSON decode error: {e}")
+                if not all_features:
+                    raise
+                break
+
+            if 'error' in data:
+                msg = data['error'].get('message', str(data['error']))
+                logger.error(f"[{label}] API error: {msg}")
+                if not all_features:
+                    raise RuntimeError(f"{label}: API error — {msg}")
+                break
+
+            features = data.get('features', [])
+            if not isinstance(features, list):
+                logger.error(f"[{label}] Unexpected response format")
+                if not all_features:
+                    raise RuntimeError(f"{label}: No features in response")
+                break
+
+            all_features.extend(features)
+            logger.info(f"[{label}] Fetched {len(all_features)} records so far…")
+
+            if len(features) < RECORD_COUNT:
+                break  # last page
+
+            offset += RECORD_COUNT
+            time.sleep(0.5)  # Rate limiting
+
+        return all_features
+
+    def map_nlsdb_feature(self, attrs, geometry, index):
+        """Map NLSDB feature attributes to app schema."""
+        # Compute centroid from polygon geometry
+        lat, lng = None, None
+        if geometry and 'rings' in geometry and geometry['rings']:
+            ring = geometry['rings'][0]
+            if ring:
+                xs = [p[0] for p in ring]
+                ys = [p[1] for p in ring]
+                lng = sum(xs) / len(xs)
+                lat = sum(ys) / len(ys)
+
+        # Parse case metadata
+        meta = {}
+        cse_meta = attrs.get('CSE_META', '')
+        if cse_meta:
+            try:
+                meta = json.loads(cse_meta)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        def format_date(raw):
+            if not raw:
+                return None
+            if isinstance(raw, (int, float)):
+                try:
+                    return datetime.fromtimestamp(raw / 1000).strftime('%Y-%m-%d')
+                except (ValueError, OSError):
+                    return None
+            return str(raw)[:10]
+
+        def map_claim_type(prod, type_nr):
+            if prod:
+                p = prod.upper()
+                if 'LODE' in p:
+                    return 'LODE'
+                if 'PLACER' in p:
+                    return 'PLACER'
+                if 'TUNNEL' in p:
+                    return 'TUNNEL SITE'
+                if 'MILL' in p:
+                    return 'MILLSITE'
+            if type_nr:
+                t = str(type_nr)
+                if t.startswith('3841'):
+                    return 'LODE'
+                if t.startswith('3842'):
+                    return 'PLACER'
+                if t.startswith('3843'):
+                    return 'TUNNEL SITE'
+                if t.startswith('3844'):
+                    return 'MILLSITE'
+            return 'LODE'
+
+        return {
+            'id': attrs.get('OBJECTID', index),
+            'blm_case_id': attrs.get('CSE_NR', '') or attrs.get('LEG_CSE_NR', ''),
+            'claim_name': attrs.get('CSE_NAME', ''),
+            'claim_type': map_claim_type(attrs.get('BLM_PROD'), attrs.get('CSE_TYPE_NR')),
+            'claimant_name': meta.get('claimant', '') or meta.get('CLAIMANT', ''),
+            'case_disposition': (attrs.get('CSE_DISP', '') or '').upper(),
+            'location_date': format_date(meta.get('location_date') or meta.get('LOC_DATE')),
+            'close_date': format_date(meta.get('close_date') or meta.get('CLOSE_DATE')),
+            'county': (meta.get('county', '') or meta.get('COUNTY', '') or '').upper(),
+            'township': meta.get('township', '') or meta.get('TOWNSHIP', '') or meta.get('TWP', ''),
+            'range': meta.get('range', '') or meta.get('RANGE', '') or meta.get('RNG', ''),
+            'section': str(meta.get('section', '') or meta.get('SECTION', '') or ''),
+            'meridian': meta.get('meridian', 'GILA & SALT RIVER'),
+            'latitude': round(lat, 6) if lat else None,
+            'longitude': round(lng, 6) if lng else None,
+            'acreage': float(attrs['RCRD_ACRS']) if attrs.get('RCRD_ACRS') else None,
+            'commodity': meta.get('commodity', '') or meta.get('COMMODITY', ''),
+            'maintenance_fee_paid': False,
+            'notes': None,
+            'data_quality': attrs.get('QLTY'),
+            'patented': attrs.get('MC_PATENTED') == 'Y',
+            'source': 'blm_nlsdb'
+        }
+
+    def fetch_closed_claims(self):
+        """Fetch closed/abandoned/void claims from primary NLSDB source."""
+        where = f"ADMIN_STATE='{ARIZONA_STATE_CODE}' AND CSE_DISP IN ('CLOSED','ABANDONED','VOID')"
+        features = self.fetch_paginated(PRIMARY_ENDPOINT, where, "NLSDB-Primary")
+        self.primary_records = [
+            self.map_nlsdb_feature(f.get('attributes', {}), f.get('geometry'), i)
+            for i, f in enumerate(features)
+        ]
+        logger.info(f"Primary source: {len(self.primary_records)} records mapped")
+        return self.primary_records
+
+    def fetch_recently_closed(self):
+        """Fetch recently closed claims from secondary HUB source."""
+        where = f"ADMIN_STATE='{ARIZONA_STATE_CODE}'"
+        try:
+            features = self.fetch_paginated(SECONDARY_ENDPOINT, where, "HUB-Secondary")
+            self.secondary_records = [
+                self.map_nlsdb_feature(f.get('attributes', {}), f.get('geometry'), i)
+                for i, f in enumerate(features)
+            ]
+            for rec in self.secondary_records:
+                rec['source'] = 'blm_hub_closed'
+            logger.info(f"Secondary source: {len(self.secondary_records)} records mapped")
+        except Exception as e:
+            logger.warning(f"Secondary source failed (non-fatal): {e}")
+            self.secondary_records = []
+        return self.secondary_records
+
+    def deduplicate_and_merge(self):
+        """Merge primary and secondary records, deduplicating by case number."""
+        seen = set()
+        merged = []
+
+        # Primary records take priority
+        for rec in self.primary_records:
+            case_id = rec['blm_case_id']
+            if case_id and case_id not in seen:
+                seen.add(case_id)
+                merged.append(rec)
+            elif not case_id:
+                merged.append(rec)
+
+        # Add secondary records not already present
+        for rec in self.secondary_records:
+            case_id = rec['blm_case_id']
+            if case_id and case_id not in seen:
+                seen.add(case_id)
+                merged.append(rec)
+
+        logger.info(f"After deduplication: {len(merged)} unique claims")
+        return merged
+
+    def save_output(self, claims):
+        """Save claims data to JSON file."""
+        output = {
+            'metadata': {
+                'fetchedAt': datetime.utcnow().isoformat() + 'Z',
+                'totalRecords': len(claims),
+                'source': 'blm_arcgis',
+                'sources': [
+                    {
+                        'name': 'BLM NLSDB Mining Claims (Closed)',
+                        'url': 'https://gis.blm.gov/nlsdb/rest/services/Mining_Claims/MiningClaims/MapServer/2',
+                        'records': len(self.primary_records),
+                        'description': 'Official BLM MLRS — closed mining claims with polygon geometry'
+                    },
+                    {
+                        'name': 'BLM HUB MLRS Mining Claims Closed',
+                        'url': 'https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Mining_Claims_Closed/MapServer/0',
+                        'records': len(self.secondary_records),
+                        'description': 'Recently updated/modified closed claims from BLM GBP Hub'
+                    }
+                ],
+                'dataLicense': 'U.S. Public Domain — U.S. Department of Interior, Bureau of Land Management',
+                'notes': 'Geometry derived from PLSS legal land descriptions. Data quality scores indicate mapping confidence.'
+            },
+            'data': claims
+        }
+
+        self.output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.output_path, 'w', encoding='utf-8') as f:
+            json.dump(output, f, indent=2, ensure_ascii=False)
+
+        logger.info(f"Saved {len(claims)} claims to {self.output_path}")
+
+    def run_full_pipeline(self):
+        """Run the complete data fetching and processing pipeline."""
+        logger.info("=" * 60)
+        logger.info("BLM Mining Claims Data Pipeline — Starting")
+        logger.info(f"Timestamp: {datetime.utcnow().isoformat()}Z")
+        logger.info("=" * 60)
+
+        # Fetch from both sources
+        self.fetch_closed_claims()
+        self.fetch_recently_closed()
+
+        # Merge and deduplicate
+        claims = self.deduplicate_and_merge()
+
+        if not claims:
+            logger.error("No claims fetched from any source. Preserving existing data.")
+            sys.exit(1)
+
+        # Save output
+        self.save_output(claims)
+
+        logger.info("=" * 60)
+        logger.info("Pipeline complete")
+        logger.info(f"  Primary: {len(self.primary_records)} records")
+        logger.info(f"  Secondary: {len(self.secondary_records)} records")
+        logger.info(f"  Final: {len(claims)} unique claims")
+        logger.info("=" * 60)
+
+        return claims
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Fetch BLM mining claim data for Arizona'
+    )
+    parser.add_argument(
+        '--output', '-o',
+        default=str(DEFAULT_OUTPUT),
+        help='Output JSON file path'
+    )
+    args = parser.parse_args()
+
+    fetcher = BLMDataFetcher(output_path=args.output)
+    fetcher.run_full_pipeline()
+
 
 if __name__ == "__main__":
-    fetcher = BLMDataFetcher()
-    fetcher.run_full_process()
+    main()

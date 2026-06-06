@@ -1,7 +1,7 @@
 {
   "name": "mining-claim-locator",
-  "version": "1.0.0",
-  "description": "Application to locate expired mining claims in Arizona",
+  "version": "2.0.0",
+  "description": "Interactive app to locate expired mining claims in Arizona using official BLM open data and Mapbox GL JS",
   "scripts": {
     "start:backend": "cd backend && node server.js",
     "start:frontend": "cd frontend && npm start",
@@ -11,7 +11,8 @@
     "test": "npm run test:backend && npm run test:frontend",
     "build:frontend": "cd frontend && npm run build",
     "setup:db": "psql -U postgres -c 'CREATE DATABASE mining_claims;' && psql -U postgres -d mining_claims -f scripts/setup_database.sql",
-    "fetch:data": "cd scripts && python3 blm_fetcher.py"
+    "fetch:data": "cd scripts && node fetch_blm_data.js",
+    "fetch:data:py": "cd scripts && python3 blm_fetcher.py"
   },
   "dependencies": {
     "concurrently": "^9.1.2"

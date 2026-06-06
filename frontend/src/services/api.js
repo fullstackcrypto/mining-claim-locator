@@ -12,12 +12,12 @@ function filterClaims(claims, params = {}) {
   }
   if (params.township) {
     results = results.filter(c =>
-      c.township.toUpperCase().includes(params.township.toUpperCase())
+      c.township && c.township.toUpperCase().includes(params.township.toUpperCase())
     );
   }
   if (params.range) {
     results = results.filter(c =>
-      c.range.toUpperCase().includes(params.range.toUpperCase())
+      c.range && c.range.toUpperCase().includes(params.range.toUpperCase())
     );
   }
   if (params.section) {
@@ -43,6 +43,12 @@ function filterClaims(claims, params = {}) {
       c.claimant_name.toUpperCase().includes(params.claimant.toUpperCase())
     );
   }
+  if (params.commodity) {
+    results = results.filter(c =>
+      c.commodity &&
+      c.commodity.toUpperCase().includes(params.commodity.toUpperCase())
+    );
+  }
 
   return results;
 }
@@ -61,10 +67,21 @@ function buildDataNotice() {
       month: 'long',
       day: 'numeric'
     });
-    return `Data last updated: ${ts}`;
+    const sourceInfo = CLAIMS_METADATA.sources
+      ? ` | Sources: ${CLAIMS_METADATA.sources.map(s => s.name).join(', ')}`
+      : '';
+    return `Data last updated: ${ts} | ${CLAIMS_METADATA.totalRecords} records${sourceInfo}`;
   }
 
   return null;
+}
+
+/**
+ * Get data source information for display.
+ */
+function getDataSources() {
+  if (!CLAIMS_METADATA || !CLAIMS_METADATA.sources) return [];
+  return CLAIMS_METADATA.sources;
 }
 
 /**
@@ -74,6 +91,10 @@ function buildDataNotice() {
  * embedded in frontend/src/data/blm_claims.json.  No runtime requests to
  * gis.blm.gov are made, which avoids CORS restrictions when served from
  * GitHub Pages.
+ *
+ * Data is sourced from official BLM open-data services:
+ *   - BLM NLSDB Mining Claims (primary, polygon geometry from PLSS)
+ *   - BLM HUB MLRS Mining Claims Closed (secondary, recently updated)
  *
  * All functions return Promises resolving to `{ data, notice? }`.
  */
@@ -94,7 +115,11 @@ const api = {
       return Promise.reject(new Error('Claim not found'));
     }
     return Promise.resolve({ data: claim });
-  }
+  },
+
+  getDataSources: () => Promise.resolve({ data: getDataSources() }),
+
+  getMetadata: () => Promise.resolve({ data: CLAIMS_METADATA })
 };
 
 export default api;

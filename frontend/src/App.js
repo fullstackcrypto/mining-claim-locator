@@ -123,8 +123,10 @@ function App() {
 
       <footer className="app-footer">
         <p>
-          Data sourced from BLM LR2000 / MLRS records. For research purposes only.
+          Data sourced from official BLM NLSDB & MLRS open-data services (U.S. Public Domain).
+          Map powered by Mapbox. For research purposes only.
         </p>
+        <p className="app-attribution">CREATED BY CHARLEY FOR ANGIE</p>
       </footer>
     </div>
   );

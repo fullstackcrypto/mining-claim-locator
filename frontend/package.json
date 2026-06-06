@@ -1,7 +1,7 @@
 {
   "name": "frontend",
-  "version": "1.0.0",
-  "description": "Mining Claim Locator Frontend",
+  "version": "2.0.0",
+  "description": "Mining Claim Locator Frontend — Mapbox GL JS + BLM Open Data",
   "homepage": "https://fullstackcrypto.github.io/mining-claim-locator",
   "main": "index.js",
   "scripts": {
@@ -13,10 +13,8 @@
   "dependencies": {
     "@testing-library/dom": "^10.4.1",
     "axios": "^1.6.0",
-    "leaflet": "^1.9.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-leaflet": "^4.2.1",
     "react-router-dom": "^6.16.0",
     "react-scripts": "5.0.1"
   },

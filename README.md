@@ -1,19 +1,32 @@
 # Mining Claim Locator
 
-An interactive web application for locating expired and abandoned mining claims in Arizona using BLM data.
+An interactive web application for locating expired and abandoned mining claims in Arizona using official BLM (Bureau of Land Management) open-data services, powered by Mapbox GL JS.
 
 ## What this app does
 
-The app currently runs in **sample-data mode**: the Express backend serves a curated set of real-looking BLM mining claim records held in memory and applies real filtering logic against them. No database is required to run the app. Five sample claims across five Arizona counties (MARICOPA, PIMA, YAVAPAI, COCHISE, MOHAVE) are included out of the box so you can immediately exercise search and map features.
+The Mining Claim Locator helps prospectors, researchers, and land enthusiasts find expired, abandoned, and void mining claims across Arizona. It pulls data directly from the **official BLM NLSDB and MLRS** open-data ArcGIS REST services — the same authoritative source used by the federal government — and presents it on an interactive Mapbox-powered map with BLM overlay layers.
 
-A PostgreSQL/PostGIS schema (`scripts/setup_database.sql`) and a BLM data ingestion script (`scripts/blm_fetcher.py`) are included in the repository as **reserved future work**. They are not wired into the running API in this release. Connecting a live database is documented in the [Database Setup (Future)](#database-setup-future) section below.
+### Data Sources (Open, Public Domain)
+
+| Source | Endpoint | Description |
+|--------|----------|-------------|
+| **BLM NLSDB Mining Claims** | [MapServer/2](https://gis.blm.gov/nlsdb/rest/services/Mining_Claims/MiningClaims/MapServer/2) | Closed mining claims with polygon geometry derived from PLSS |
+| **BLM HUB MLRS Closed** | [MapServer/0](https://gis.blm.gov/nlsdb/rest/services/HUB/BLM_Natl_MLRS_Mining_Claims_Closed/MapServer/0) | Recently updated/modified closed claims |
+| **BLM PLSS CadNSDI** | [MapServer](https://gis.blm.gov/arcgis/rest/services/Cadastral/BLM_Natl_PLSS_CadNSDI/MapServer) | Township/Range/Section grid overlay |
+| **BLM Surface Management** | [MapServer](https://gis.blm.gov/arcgis/rest/services/admin_boundaries/BLM_Natl_SMA_LimitedScale/MapServer) | Federal land boundaries overlay |
+
+All data is **U.S. Public Domain** — no API key required for BLM services.
 
 ## Features
 
-- **Interactive map** powered by [Leaflet](https://leafletjs.com/) and OpenStreetMap — no API key required
+- **Interactive map** powered by [Mapbox GL JS](https://docs.mapbox.com/mapbox-gl-js/) with terrain, satellite, and outdoor styles
+- **BLM overlay layers** — toggle official Mining Claims boundaries, PLSS grid, and Federal Lands directly on the map
 - **Advanced search** by county, township, range, section, claim type, status, claimant name, and date range
-- **Real filtering** — search parameters genuinely reduce or expand results
-- **5 sample claims** from 5 different Arizona counties included out of the box
+- **Color-coded markers** — Closed (red), Abandoned (orange), Void (purple)
+- **Automated data refresh** — GitHub Actions fetches fresh BLM data weekly
+- **Dual data pipeline** — Node.js (primary) and Python (fallback) fetchers for reliability
+- **PWA-ready** — installable as a Progressive Web App
+- **Graceful fallback** — works without Mapbox token using OpenStreetMap tiles
 
 ## Quick Start
 
@@ -35,7 +48,26 @@ cd backend && npm install
 cd frontend && npm install --legacy-peer-deps
 ```
 
-### 2. Start the development servers
+### 2. Configure Mapbox (optional but recommended)
+
+Create a free Mapbox account at [console.mapbox.com](https://console.mapbox.com/) and get an access token.
+
+```bash
+# Create frontend/.env.local
+echo "REACT_APP_MAPBOX_TOKEN=pk.your_token_here" > frontend/.env.local
+```
+
+> **Note:** The app works without a Mapbox token — it falls back to OpenStreetMap tiles. However, Mapbox provides superior terrain/satellite imagery and the Outdoors style optimized for land exploration.
+
+### 3. Fetch fresh BLM data (optional)
+
+```bash
+cd scripts && node fetch_blm_data.js
+```
+
+This fetches the latest data from BLM's official services and saves it to `frontend/src/data/blm_claims.json`. The app ships with seed data, so this step is optional for development.
+
+### 4. Start the development servers
 
 ```bash
 # From the repo root — starts backend on :3000 and frontend on :3001
@@ -50,6 +82,18 @@ npm run start:frontend  # React app    → http://localhost:3001
 ```
 
 Open **http://localhost:3001** in your browser, select a county (or click Show Advanced), then click **Search Claims**.
+
+## Map Layers
+
+The map includes three toggleable BLM overlay layers sourced directly from official government GIS services:
+
+| Layer | Description | Zoom Level |
+|-------|-------------|-----------|
+| **Mining Claims** | Official BLM claim boundaries (active + closed) | 8+ |
+| **PLSS Grid** | Township/Range/Section survey grid | 8+ |
+| **Federal Lands** | BLM Surface Management Agency boundaries | 6+ |
+
+These layers are served as raster tiles directly from `gis.blm.gov` — no intermediate processing or API key required.
 
 ## API Reference
 
@@ -78,21 +122,35 @@ All parameters are optional. Omitting a parameter returns all records for that d
 | `date_to` | date | `2020-12-31` | Claims closed on or before this date |
 | `claimant` | string | `smith` | Case-insensitive substring match on claimant name |
 
-### Example requests
+## Data Pipeline
 
-```bash
-# All claims
-curl http://localhost:3000/api/claims/search
+The app uses a **build-time data embedding** strategy for GitHub Pages deployment:
 
-# Abandoned placer claims in Pima county
-curl "http://localhost:3000/api/claims/search?county=PIMA&claim_type=PLACER&case_disposition=ABANDONED"
-
-# Claims closed 2010–2020
-curl "http://localhost:3000/api/claims/search?date_from=2010-01-01&date_to=2020-12-31"
-
-# Single claim detail
-curl http://localhost:3000/api/claims/1
 ```
+BLM ArcGIS REST API  →  scripts/fetch_blm_data.js  →  frontend/src/data/blm_claims.json  →  React build
+```
+
+### How it works
+
+1. `scripts/fetch_blm_data.js` (or `scripts/blm_fetcher.py` as fallback) queries the BLM NLSDB and HUB services
+2. Records are normalized, deduplicated, and saved as JSON
+3. The React app imports this JSON at build time — no runtime API calls to BLM
+4. GitHub Actions refreshes the data weekly (Monday 6 AM UTC) and on every deploy
+
+### Data fields
+
+Each claim record includes:
+
+| Field | Source | Description |
+|-------|--------|-------------|
+| `blm_case_id` | CSE_NR | Official BLM case serial number |
+| `claim_name` | CSE_NAME | Geographic name of the claim |
+| `claim_type` | BLM_PROD | LODE, PLACER, MILLSITE, or TUNNEL SITE |
+| `case_disposition` | CSE_DISP | CLOSED, ABANDONED, or VOID |
+| `latitude/longitude` | Geometry centroid | Derived from PLSS polygon geometry |
+| `acreage` | RCRD_ACRS | Recorded acres |
+| `data_quality` | QLTY | BLM data quality score (0–100) |
+| `patented` | MC_PATENTED | Whether claim was patented |
 
 ## Running Tests
 
@@ -110,17 +168,19 @@ npm run test:frontend
 ## Production Build
 
 ```bash
-npm run build:frontend
-# Output: frontend/build/
+REACT_APP_MAPBOX_TOKEN=pk.your_token npm run build:frontend
 ```
 
-Set `REACT_APP_API_URL` before building to point the frontend at your deployed API:
-
-```bash
-REACT_APP_API_URL=https://api.yourhost.com/api npm run build:frontend
-```
+For GitHub Pages deployment, add `MAPBOX_TOKEN` as a repository secret.
 
 ## Environment Variables
+
+### Frontend
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REACT_APP_MAPBOX_TOKEN` | *(empty)* | Mapbox GL JS access token (falls back to OSM if empty) |
+| `REACT_APP_API_URL` | `http://localhost:3000/api` | Backend API base URL (not used in Pages mode) |
 
 ### Backend (`backend/.env`)
 
@@ -130,38 +190,6 @@ REACT_APP_API_URL=https://api.yourhost.com/api npm run build:frontend
 | `CORS_ORIGIN` | `http://localhost:3000,http://localhost:3001` | Comma-separated allowed origins |
 | `DATABASE_URL` | *(none)* | Reserved — not used in current runtime |
 
-### Frontend
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `REACT_APP_API_URL` | `http://localhost:3000/api` | Backend API base URL |
-
-## Database Setup (Future)
-
-The running API uses in-memory sample data. When you are ready to connect a live PostgreSQL database:
-
-1. Create the database and schema:
-
-```bash
-psql -U postgres -c 'CREATE DATABASE mining_claims;'
-psql -U postgres -d mining_claims -f scripts/setup_database.sql
-```
-
-2. Set `DATABASE_URL` in `backend/.env`:
-
-```
-DATABASE_URL=******localhost:5432/mining_claims
-```
-
-3. Update `backend/routes/claims.js` to query the database via `pg.Pool` instead of the in-memory `SAMPLE_CLAIMS` array.
-
-4. Optionally populate from BLM data (requires Python 3 + `scripts/requirements.txt`):
-
-```bash
-pip install -r scripts/requirements.txt
-python scripts/blm_fetcher.py
-```
-
 ## Deployment
 
 | Layer | Recommended platform |
@@ -169,32 +197,70 @@ python scripts/blm_fetcher.py
 | Frontend (static) | GitHub Pages, Vercel, Netlify |
 | Backend (API) | Render, Railway, Fly.io |
 
-The frontend is a standard Create React App build and can be served from any static host. The backend is a plain Express app with no special runtime requirements. Set `REACT_APP_API_URL` to your backend's URL at build time and set `CORS_ORIGIN` to your frontend's origin on the backend.
+### GitHub Pages (current)
+
+The app auto-deploys to GitHub Pages on every push to `main`. Add the `MAPBOX_TOKEN` secret in your repository settings for the best map experience.
+
+### Secrets to configure
+
+| Secret | Where | Description |
+|--------|-------|-------------|
+| `MAPBOX_TOKEN` | GitHub repo secrets | Your Mapbox public access token |
 
 ## CI/CD
 
-A GitHub Actions workflow (`.github/workflows/ci.yml`) runs on every push and pull request:
+GitHub Actions workflows:
 
-1. **Backend Tests** — Jest + Supertest
-2. **Frontend Tests** — React Testing Library
-3. **Frontend Build** — verifies the production build succeeds
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `ci.yml` | Push/PR to main | Run tests + verify build |
+| `deploy.yml` | Push to main | Build + deploy to GitHub Pages |
+| `refresh-data.yml` | Weekly (Mon 6AM UTC) + manual | Refresh BLM data from live services |
 
 ## Technologies
 
 | Layer | Stack |
 |-------|-------|
+| Map | Mapbox GL JS 3.4 (with OpenStreetMap fallback) |
+| Frontend | React 18, React Router 6 |
 | Backend | Node.js, Express 5, Helmet, CORS |
-| Frontend | React 18, react-leaflet 4, Leaflet 1.9, OpenStreetMap |
-| Data | In-memory sample BLM records with real filtering; PostGIS schema reserved for future live data |
+| Data | BLM NLSDB + HUB ArcGIS REST (open, public domain) |
+| Overlays | BLM Mining Claims, PLSS CadNSDI, Surface Management Agency |
 | Testing | Jest, Supertest, React Testing Library |
-| CI | GitHub Actions |
+| CI/CD | GitHub Actions |
+| Deployment | GitHub Pages (static PWA) |
 
-## Current Limitations
+## Architecture
 
-- The app ships with 5 sample claims. Live BLM data ingestion requires the optional database setup described above.
-- No authentication or rate limiting is implemented (appropriate for local/demo use).
-- `scripts/blm_fetcher.py` accesses BLM endpoints that require network access and may require registration for full API usage.
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    GitHub Pages (Static)                      │
+├─────────────────────────────────────────────────────────────┤
+│  React App                                                   │
+│  ├── MapView (Mapbox GL JS)                                 │
+│  │   ├── Claim markers (color-coded by status)              │
+│  │   ├── BLM Mining Claims overlay (raster tiles)           │
+│  │   ├── PLSS Grid overlay (raster tiles)                   │
+│  │   └── Federal Lands overlay (raster tiles)               │
+│  ├── SearchPanel (county, PLSS, type, status, date)         │
+│  └── ClaimsList (paginated results with detail panels)      │
+├─────────────────────────────────────────────────────────────┤
+│  Embedded Data (build-time)                                  │
+│  └── blm_claims.json ← scripts/fetch_blm_data.js           │
+│                          ├── BLM NLSDB Closed Claims        │
+│                          └── BLM HUB MLRS Closed Claims     │
+├─────────────────────────────────────────────────────────────┤
+│  External Tile Services (runtime, no key needed)             │
+│  ├── gis.blm.gov/nlsdb (Mining Claims MapServer)           │
+│  ├── gis.blm.gov/arcgis (PLSS CadNSDI)                    │
+│  └── gis.blm.gov/arcgis (SMA boundaries)                   │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## License
 
 MIT
+
+---
+
+<sub>CREATED BY CHARLEY FOR ANGIE</sub>

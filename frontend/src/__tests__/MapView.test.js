@@ -1,26 +1,60 @@
-// Mock react-leaflet since jsdom doesn't support canvas/WebGL
-jest.mock('react-leaflet', () => ({
-  MapContainer: ({ children }) => <div data-testid="map-container">{children}</div>,
-  TileLayer: () => null,
-  Marker: ({ children }) => <div data-testid="map-marker">{children}</div>,
-  Popup: ({ children }) => <div data-testid="map-popup">{children}</div>,
-  useMap: () => ({ fitBounds: jest.fn() })
-}));
-
-// Mock leaflet
-jest.mock('leaflet', () => ({
-  Icon: {
-    Default: {
-      prototype: { _getIconUrl: jest.fn() },
-      mergeOptions: jest.fn()
-    }
-  }
-}));
-
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import MapView from '../components/MapView';
+
+// Mock Mapbox GL JS global
+// Note: jest.fn(() => obj) does NOT work with 'new' in this jest version.
+// When called with 'new', jest ignores the return value. We must use
+// class-style constructors that assign properties to 'this'.
+const mockMapProps = {
+  addControl: jest.fn(),
+  addSource: jest.fn(),
+  addLayer: jest.fn(),
+  getLayer: jest.fn(() => true),
+  setLayoutProperty: jest.fn(),
+  fitBounds: jest.fn(),
+  flyTo: jest.fn(),
+  on: jest.fn((event, cb) => {
+    if (event === 'load') setTimeout(cb, 0);
+  }),
+  remove: jest.fn()
+};
+
+const mockMarkerProps = {
+  setLngLat: jest.fn(function() { return this; }),
+  addTo: jest.fn(function() { return this; }),
+  remove: jest.fn()
+};
+
+const mockPopupProps = {
+  setLngLat: jest.fn(function() { return this; }),
+  setHTML: jest.fn(function() { return this; }),
+  addTo: jest.fn(function() { return this; }),
+  remove: jest.fn()
+};
+
+function MockMap() { Object.assign(this, mockMapProps); }
+function MockMarker() { Object.assign(this, mockMarkerProps); }
+function MockPopup() { Object.assign(this, mockPopupProps); }
+function MockLngLatBounds() { this.extend = jest.fn(); }
+
+beforeAll(() => {
+  window.mapboxgl = {
+    accessToken: '',
+    Map: MockMap,
+    Marker: MockMarker,
+    Popup: MockPopup,
+    NavigationControl: jest.fn(),
+    ScaleControl: jest.fn(),
+    GeolocateControl: jest.fn(),
+    LngLatBounds: MockLngLatBounds
+  };
+});
+
+afterAll(() => {
+  delete window.mapboxgl;
+});
 
 const sampleClaims = [
   {
@@ -36,7 +70,8 @@ const sampleClaims = [
     range: 'R3E',
     section: '14',
     latitude: 33.4484,
-    longitude: -112.0740
+    longitude: -112.074,
+    commodity: 'GOLD, SILVER'
   },
   {
     id: 2,
@@ -51,54 +86,55 @@ const sampleClaims = [
     range: 'R12E',
     section: '28',
     latitude: 32.1234,
-    longitude: -111.7890
+    longitude: -111.789,
+    commodity: 'GOLD'
   }
 ];
 
-describe('MapView', () => {
+describe('MapView Component', () => {
   it('renders the map container', () => {
-    render(<MapView claims={[]} />);
-    expect(screen.getByTestId('map-container')).toBeInTheDocument();
+    render(<MapView claims={[]} loading={false} error={null} />);
+    expect(screen.getByLabelText('Map of Arizona mining claims')).toBeInTheDocument();
   });
 
-  it('shows loading indicator when loading is true', () => {
-    render(<MapView claims={[]} loading={true} />);
-    expect(screen.getByText(/loading claims/i)).toBeInTheDocument();
+  it('shows loading indicator when loading', () => {
+    render(<MapView claims={[]} loading={true} error={null} />);
+    expect(screen.getByText('Loading claims…')).toBeInTheDocument();
   });
 
-  it('shows error message when error is provided', () => {
-    render(<MapView claims={[]} error="Network error" />);
+  it('shows error message when there is an error', () => {
+    render(<MapView claims={[]} loading={false} error="Network error" />);
     expect(screen.getByRole('alert')).toHaveTextContent('Network error');
   });
 
-  it('renders a marker for each claim with valid coordinates', () => {
-    render(<MapView claims={sampleClaims} />);
-    const markers = screen.getAllByTestId('map-marker');
-    expect(markers).toHaveLength(sampleClaims.length);
+  it('shows claim count in stats', () => {
+    render(<MapView claims={sampleClaims} loading={false} error={null} />);
+    expect(screen.getByText('Showing 2 expired mining claims')).toBeInTheDocument();
   });
 
-  it('displays claim count in stats bar', () => {
-    render(<MapView claims={sampleClaims} />);
-    expect(screen.getByText(/2 expired mining claims/i)).toBeInTheDocument();
+  it('shows singular claim count', () => {
+    render(<MapView claims={[sampleClaims[0]]} loading={false} error={null} />);
+    expect(screen.getByText('Showing 1 expired mining claim')).toBeInTheDocument();
   });
 
-  it('shows singular label for exactly one claim', () => {
-    render(<MapView claims={[sampleClaims[0]]} />);
-    expect(screen.getByText(/1 expired mining claim$/i)).toBeInTheDocument();
+  it('renders BLM layer controls', () => {
+    render(<MapView claims={[]} loading={false} error={null} />);
+    expect(screen.getByText('BLM Layers')).toBeInTheDocument();
+    expect(screen.getByText('Mining Claims')).toBeInTheDocument();
+    expect(screen.getByText('PLSS Grid')).toBeInTheDocument();
+    expect(screen.getByText('Federal Lands')).toBeInTheDocument();
   });
 
-  it('renders popup with claim details', () => {
-    render(<MapView claims={[sampleClaims[0]]} />);
-    expect(screen.getByText('DESERT GOLD')).toBeInTheDocument();
-    expect(screen.getByText(/AZMC123456/)).toBeInTheDocument();
-    expect(screen.getByText(/ARIZONA MINERALS LLC/)).toBeInTheDocument();
+  it('renders the map legend', () => {
+    render(<MapView claims={[]} loading={false} error={null} />);
+    expect(screen.getByText('Status')).toBeInTheDocument();
+    expect(screen.getByText('Closed')).toBeInTheDocument();
+    expect(screen.getByText('Abandoned')).toBeInTheDocument();
+    expect(screen.getByText('Void')).toBeInTheDocument();
   });
 
-  it('skips markers for claims with invalid coordinates', () => {
-    const badClaims = [
-      { id: 99, claim_name: 'BAD', latitude: null, longitude: null }
-    ];
-    render(<MapView claims={badClaims} />);
-    expect(screen.queryByTestId('map-marker')).not.toBeInTheDocument();
+  it('renders data source attribution', () => {
+    render(<MapView claims={[]} loading={false} error={null} />);
+    expect(screen.getByText(/Bureau of Land Management/)).toBeInTheDocument();
   });
 });
