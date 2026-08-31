@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "fetchedAt": "2026-08-24T06:12:57.441Z",
+    "fetchedAt": "2026-08-31T06:16:46.979Z",
     "totalRecords": 9024,
     "source": "blm_arcgis",
     "sources": [
@@ -207611,13 +207611,13 @@
       "range": "",
       "section": "",
       "meridian": "GILA & SALT RIVER",
-      "latitude": 32.759132168336464,
-      "longitude": -114.43307274850557,
-      "acreage": 763.29,
+      "latitude": 32.76538526747419,
+      "longitude": -114.4352141108985,
+      "acreage": 884.8,
       "commodity": "",
       "maintenance_fee_paid": false,
       "notes": null,
-      "data_quality": "8; Only mapped PLSS First Div, DOES NOT MATCH PM ANGLES, TWN CONTAINS PB/UP/UU, aliquot",
+      "data_quality": "8; Only mapped PLSS First Div, DOES NOT MATCH PM ANGLES, TWN CONTAINS PB/UP/UU, aliquot; SIMPLE, ATTRIBUTE BUCKET DOES NOT MATCH THE WITHIN BUCKET, TWN CONTAINS PB/UP/UU, aliquot",
       "patented": false,
       "source": "blm_nlsdb"
     },
